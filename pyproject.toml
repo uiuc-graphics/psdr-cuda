@@ -13,6 +13,8 @@ dependencies = ["drjit==1.5.0"]
 
 [project.optional-dependencies]
 test = ["pytest>=8", "numpy>=1.24"]
+tutorial = ["numpy>=1.24", "matplotlib>=3.8", "pillow>=10", "imageio>=2.34",
+            "nbclient>=0.10", "nbformat>=5.10", "ipykernel>=6", "jupyterlab>=4"]
 
 [tool.scikit-build]
 build.verbose = true

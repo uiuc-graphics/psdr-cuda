@@ -236,3 +236,19 @@ def test_configured_mesh_copy_does_not_share_owned_caches():
     result = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).parent,
                             capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_optix_debug_matches_normal_rendering(tmp_path):
+    # Native compiler crashes must fail the test instead of killing pytest.
+    probe = Path(__file__).with_name("repro_debug_dispatch.py")
+    for mode in ("normal", "debug"):
+        command = [sys.executable, str(probe), "--output", str(tmp_path / f"{mode}.npz")]
+        if mode == "normal":
+            command.append("--no-debug")
+        result = subprocess.run(command, capture_output=True, text=True, timeout=180)
+        assert result.returncode == 0, f"{mode}: {result.returncode}\n{result.stdout}\n{result.stderr}"
+    with np.load(tmp_path / "normal.npz") as normal, np.load(tmp_path / "debug.npz") as debug:
+        assert set(normal.files) == set(debug.files)
+        for name in normal.files:
+            np.testing.assert_allclose(debug[name], normal[name], rtol=1e-3, atol=2e-5,
+                                       err_msg=name)

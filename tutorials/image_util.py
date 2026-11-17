@@ -1,27 +1,31 @@
-import torch
 
 from pathlib import Path
 import numpy as np
 from PIL import Image as im
-import imageio.v3 as iio
-import torch
 
-def write_exr(exr_path, image):
-    image = to_numpy(image).astype(np.float32)
-    if len(image.shape) == 3:
-        image = np.expand_dims(image, axis=0)
-    try:
-        iio.imwrite(exr_path, image)
-    except OSError:
-        imageio.plugins.freeimage.download()
-        iio.imwrite(exr_path, image, extension='.exr')
-
+DATA_DIR = Path(__file__).resolve().parent / "data"
 
 def to_numpy(data):
-    if torch.is_tensor(data):
-        return data.detach().cpu().numpy()
-    else:
-        return np.array(data)
+    # Support NumPy, Dr.Jit, and optional Torch tensors without importing Torch.
+    if hasattr(data, "detach") and hasattr(data, "cpu"):
+        data = data.detach().cpu()
+    if hasattr(data, "numpy"):
+        data = data.numpy()
+    return np.asarray(data)
+
+
+def to_image(data, height, width):
+    """Convert a Dr.Jit RGB array (3, H*W) to an image (H, W, 3)."""
+    pixels = to_numpy(data)
+    if pixels.shape != (3, height * width):
+        raise ValueError(f"Expected (3, {height * width}), got {pixels.shape}")
+    return pixels.reshape(3, height, width).transpose(1, 2, 0)
+
+
+def write_exr(exr_path, image):
+    import imageio.v3 as iio
+    iio.imwrite(exr_path, to_numpy(image).astype(np.float32))
+
 
 def linear_to_srgb(l):
     s = np.zeros_like(l)
@@ -57,6 +61,7 @@ def write_jpg(jpg_path, image):
     rgb_im.save(jpg_path, format='JPEG', quality=95)
     
 def read_image(image_path, is_srgb=None, remove_alpha=True):
+    import imageio.v3 as iio
     image_path = Path(image_path)
     image = iio.imread(image_path)
     image = np.atleast_3d(image)
@@ -75,11 +80,12 @@ def read_image(image_path, is_srgb=None, remove_alpha=True):
             is_srgb = True
 
     if is_srgb:
-        image = to_linear(image)
+        image = srgb_to_linear(image)
 
     return image
 
 def write_image(image_path, image, is_srgb=None):
+    import imageio.v3 as iio
     image_path = Path(image_path)
     image = to_numpy(image)
     image = np.atleast_3d(image)

@@ -43,11 +43,13 @@ They skip when a CUDA backend is unavailable. The current build was validated
 on Windows with Python 3.12 and an RTX 4090; Linux build/runtime validation is
 still needed.
 
-Known validation limitation: enabling `dr.JitFlag.Debug` with multi-material
-OptiX rendering crashes inside NVIDIA's `nvrtum64.dll` on the tested Windows
-driver 610.88. The root cause remains unresolved; normal-mode regression tests
-pass. `python tests/repro_debug_dispatch.py` reproduces the native crash on
-that configuration. It is intentionally separate from the pytest suite.
+Debug rendering is covered by a subprocess regression that compares images
+and gradients against normal rendering. The renderer omits OptiX's additional
+`OPTIX_EXCEPTION_FLAG_DEBUG` instrumentation, which crashes during kernel
+compilation on Windows driver 610.88. Stack/depth exception checks and Dr.Jit's
+`JitFlag.Debug` checks remain enabled. This matches the exception flags used in debug mode by
+[Dr.Jit 1.5's default pipeline](https://github.com/mitsuba-renderer/drjit-core/blob/3b96411288b9938889045308654ba37d4ef24b71/src/optix_core.cpp).
+The standalone probe is `python tests/repro_debug_dispatch.py`.
 
 The migration retains the existing Python entry points. Default secondary-edge
 samples are now zero. Configured meshes added to a scene own independent caches, objects
@@ -133,7 +135,8 @@ cv2.imwrite("psdr_jit_diff_debug.exr", output)
 
 ### More tutorials
 
-See the gradient evaluation notebooks in [`tutorials`](tutorials).
+See the [tutorial setup and execution guide](tutorials/README.md) for the five
+notebooks, optional dependencies, and commands to rerun them before publishing.
 
 Object level optimization example: [`Neural-PBIR`](https://neural-pbir.github.io/) (ICCV 2023)
 

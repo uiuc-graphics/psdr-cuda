@@ -173,8 +173,12 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
             OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS; // <-- Use this when possible
         m_accel->pipeline_compile_options.numPayloadValues = 4;
         m_accel->pipeline_compile_options.numAttributeValues = 0;
+        // Match Dr.Jit's debug exception flags. OptiX's DEBUG traversal/
+        // callable instrumentation crashes nvrtum64.dll (driver 610.88) when
+        // compiling multi-material kernels with dr.JitFlag.Debug enabled.
+        // Keep stack/depth checks; Dr.Jit's own debug checks stay enabled.
         m_accel->pipeline_compile_options.exceptionFlags =
-            OPTIX_EXCEPTION_FLAG_DEBUG | OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
+            OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
             OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW;
         m_accel->pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
         m_accel->pipeline_compile_options.usesPrimitiveTypeFlags =

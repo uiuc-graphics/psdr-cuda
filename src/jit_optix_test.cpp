@@ -193,8 +193,9 @@ void demo() {
         OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS; // <-- Use this when possible
     pipeline_compile_options.numPayloadValues = 2;
     pipeline_compile_options.numAttributeValues = 0;
+    // Use the same exception checks as Scene_OptiX and Dr.Jit.
     pipeline_compile_options.exceptionFlags =
-        OPTIX_EXCEPTION_FLAG_DEBUG | OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
+        OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
         OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW;
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
     pipeline_compile_options.usesPrimitiveTypeFlags =
