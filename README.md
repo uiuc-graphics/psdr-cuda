@@ -1,5 +1,5 @@
-## This repository is deprecated
-this project will be replaced by [`psdr-jit`](https://github.com/andyyankai/psdr-jit)
+## This repository will be updated soon
+We’ll merge an updated version from [`psdr-jit`](https://github.com/andyyankai/psdr-jit)
 
 
 # psdr-cuda
