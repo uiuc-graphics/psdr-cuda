@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>psdr-jit / GPU lab</title><link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <header><strong><span class="mark">◈</span> psdr-jit</strong><span class="tag">GPU LAB</span><span id="status" role="status">Connecting…</span><span class="backend">CUDA / OptiX</span></header>
+  <main>
+    <aside>
+      <form id="controls">
+        <fieldset><legend>SCENE</legend>
+          <label class="wide">Scene<select name="scene"><option value="cornell">Cornell box</option><option value="bunny">Bunny · environment</option></select></label>
+          <label>Integrator<select name="integrator"><option value="path">Path (2)</option><option value="direct">Direct MIS</option></select></label>
+        </fieldset>
+        <fieldset><legend>OBJECT</legend>
+          <label class="slider">Position X <output for="x"></output><input id="x" name="x" type="range" min="-1" max="1" step=".01" aria-label="Position X"></label>
+          <label class="slider">Position Y <output for="y"></output><input id="y" name="y" type="range" min="-1" max="1" step=".01" aria-label="Position Y"></label>
+          <label class="slider">Roughness <output for="roughness"></output><input id="roughness" name="roughness" type="range" min=".08" max="1" step=".01" aria-label="Roughness"></label>
+          <label class="slider">Albedo <output for="albedo"></output><input id="albedo" name="albedo" type="range" min=".05" max="1" step=".01" aria-label="Albedo"></label>
+        </fieldset>
+        <fieldset><legend>LIGHT / VIEW</legend>
+          <label class="slider">Light gain <output for="light"></output><input id="light" name="light" type="range" min=".1" max="3" step=".05" aria-label="Light gain"></label>
+          <label class="slider">Exposure <output for="exposure"></output><input id="exposure" name="exposure" type="range" min="-3" max="3" step=".25" aria-label="Exposure"></label>
+        </fieldset>
+        <fieldset><legend>GRADIENT</legend>
+          <label>∂L / ∂<select name="derivative" aria-label="Derivative parameter"><option value="x">Position X</option><option value="y">Position Y</option><option value="roughness">Roughness</option><option value="albedo">Albedo</option><option value="light">Light gain</option></select></label>
+          <div class="hint">Signed mean RGB · linear radiance</div>
+        </fieldset>
+        <fieldset><legend>SAMPLING</legend>
+          <label>Resolution<select name="resolution"><option value="64">64 × 64</option><option value="128">128 × 128</option><option value="256">256 × 256</option></select></label>
+          <label>Samples<select name="spp"><option>4</option><option>8</option><option>16</option><option>32</option></select></label>
+          <label>Seed<input name="seed" aria-label="Seed" type="number" min="0" max="65535" step="1"></label>
+        </fieldset>
+        <div class="actions"><button id="render" type="submit" title="Render (Ctrl+Enter)">▶ Render</button><button id="reset" type="button" title="Reset all settings">↺ Reset</button></div>
+        <div id="error" role="alert" hidden></div>
+      </form>
+    </aside>
+    <section class="workspace" aria-label="Render comparison">
+      <div class="views">
+        <figure><figcaption><span>RENDER</span><span class="view-detail">sRGB</span><a id="save-render" title="Save render PNG" aria-label="Save render PNG" download="render.png" hidden>↓</a></figcaption><div class="viewport"><img id="render-image" alt="Rendered scene" hidden><div class="empty">◈</div></div></figure>
+        <figure><figcaption><span id="gradient-title">∂L / ∂X</span><span class="view-detail">FORWARD AD</span><a id="save-gradient" title="Save gradient PNG" aria-label="Save gradient PNG" download="gradient.png" hidden>↓</a></figcaption><div class="viewport"><img id="gradient-image" alt="Signed image gradient" hidden><div class="empty">∂</div></div><div class="scale"><span id="negative">−</span><div class="ramp"></div><span id="positive">+</span><span class="scale-note">99% scale</span></div></figure>
+      </div>
+      <footer><span id="snapshot">—</span><span id="timing">—</span></footer>
+    </section>
+  </main>
+</body>
+</html>

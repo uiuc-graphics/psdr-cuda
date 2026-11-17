@@ -135,6 +135,14 @@ cv2.imwrite("psdr_jit_diff_debug.exr", output)
 
 ### More tutorials
 
+For a compact browser interface with scene controls and side-by-side renders and
+gradients, see the [local GPU web demo](tutorials/WEB_DEMO.md):
+
+```sh
+python -m pip install ".[web]"
+python -m psdr_jit.web
+```
+
 See the [tutorial setup and execution guide](tutorials/README.md) for the five
 notebooks, optional dependencies, and commands to rerun them before publishing.
 
