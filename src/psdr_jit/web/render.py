@@ -59,7 +59,7 @@ def render_arrays(settings, assets):
 
     if not dr.has_backend(dr.JitBackend.CUDA):
         raise RuntimeError("Rendering requires an NVIDIA GPU and a CUDA/OptiX driver.")
-    dr.set_flag(dr.JitFlag.Debug, True)
+    dr.set_flag(dr.JitFlag.Debug, False)
     # Each job creates new OptiX program groups. Dr.Jit's in-memory kernel cache
     # can otherwise reuse a linked pipeline from the previous scene with the new
     # SBT, causing UNKNOWN_ENTRY_FUNCTION. The single worker has no other GPU
