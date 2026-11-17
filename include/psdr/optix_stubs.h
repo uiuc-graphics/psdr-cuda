@@ -214,7 +214,7 @@ D(optixAccelComputeMemoryUsage, OptixDeviceContext,
 D(optixAccelBuild, OptixDeviceContext, CUstream, const OptixAccelBuildOptions *,
   const OptixBuildInput *, unsigned int, CUdeviceptr, size_t, CUdeviceptr,
   size_t, OptixTraversableHandle *, const OptixAccelEmitDesc *, unsigned int);
-D(optixModuleCreateFromPTX, OptixDeviceContext,
+D(optixModuleCreate, OptixDeviceContext,
   const OptixModuleCompileOptions *, const OptixPipelineCompileOptions *,
   const char *, size_t, char *, size_t *, OptixModule *);
 D(optixModuleDestroy, OptixModule);

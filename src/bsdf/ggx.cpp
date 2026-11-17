@@ -17,7 +17,7 @@ Float<ad> GGXDistribution::eval(const Vector3f<ad>& m) const {
         alpha_uv = m_alpha_u * m_alpha_v;
     }
     else {
-        alpha_uv = detach(m_alpha_u) * detach(m_alpha_v);
+        alpha_uv = detach<false>(m_alpha_u) * detach<false>(m_alpha_v);
     }
     Float<ad> cos_theta = Frame<ad>::cos_theta(m),
         cos_theta_2 = sqr(cos_theta),
@@ -26,7 +26,7 @@ Float<ad> GGXDistribution::eval(const Vector3f<ad>& m) const {
         result = rcp(Pi * alpha_uv * sqr(sqr(m.x() / m_alpha_u) + sqr(m.y() / m_alpha_v) + sqr(m.z())));
     }
     else {
-        result = rcp(Pi * alpha_uv * sqr(sqr(m.x() / detach(m_alpha_u)) + sqr(m.y() / detach(m_alpha_v)) + sqr(m.z())));
+        result = rcp(Pi * alpha_uv * sqr(sqr(m.x() / detach<false>(m_alpha_u)) + sqr(m.y() / detach<false>(m_alpha_v)) + sqr(m.z())));
     }
     return select(result * cos_theta > 1e-20f, result, 0.f);
 }
@@ -46,8 +46,8 @@ std::pair<Vector3f<ad>, Float<ad>> GGXDistribution::sample(const Vector3f<ad>& w
     }
     else {
         wi_p = normalize(Vector3f<ad>(
-            detach(m_alpha_u) * wi.x(),
-            detach(m_alpha_v) * wi.y(),
+            detach<false>(m_alpha_u) * wi.x(),
+            detach<false>(m_alpha_v) * wi.y(),
             wi.z()
         ));
     }
@@ -66,8 +66,8 @@ std::pair<Vector3f<ad>, Float<ad>> GGXDistribution::sample(const Vector3f<ad>& w
     }
     else {
         slope = Vector2f<ad>(
-            fmsub(cos_phi, slope.x(), sin_phi * slope.y()) * detach(m_alpha_u),
-            fmadd(sin_phi, slope.x(), cos_phi * slope.y()) * detach(m_alpha_v)
+            fmsub(cos_phi, slope.x(), sin_phi * slope.y()) * detach<false>(m_alpha_u),
+            fmadd(sin_phi, slope.x(), cos_phi * slope.y()) * detach<false>(m_alpha_v)
         );
     }
     Vector3f<ad> m = normalize(Vector3f<ad>(-slope.x(), -slope.y(), 1));
@@ -86,7 +86,7 @@ Float<ad> GGXDistribution::smith_g1(const Vector3f<ad>& v, const Vector3f<ad>& m
         xy_alpha_2 = sqr(m_alpha_u * v.x()) + sqr(m_alpha_v * v.y());
     }
     else {
-        xy_alpha_2 = sqr(detach(m_alpha_u) * v.x()) + sqr(detach(m_alpha_v) * v.y());
+        xy_alpha_2 = sqr(detach<false>(m_alpha_u) * v.x()) + sqr(detach<false>(m_alpha_v) * v.y());
     }
     Float<ad> tan_theta_alpha_2 = xy_alpha_2 / sqr(v.z()), result;
     result = 2.f / (1.f + sqrt(1.f + tan_theta_alpha_2));

@@ -1,53 +1,24 @@
-cmake_minimum_required(VERSION 3.15...3.22)
+cmake_minimum_required(VERSION 3.19...3.31)
 
-project(${SKBUILD_PROJECT_NAME} VERSION ${SKBUILD_PROJECT_VERSION})
+project(psdr_jit VERSION 0.2.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if( WIN32 )
-    add_definitions(-D_USE_MATH_DEFINES -D_CRT_SECURE_NO_WARNINGS -DNDEBUG)
-else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -DNDEBUG -Wall -Wno-reorder -Wno-sign-compare -fPIC")
-endif()
-
-option(DRJIT_ENABLE_JIT "" ON)
-option(DRJIT_ENABLE_AUTODIFF "" ON)
-option(DRJIT_ENABLE_PYTHON "" ON)
-
-set(DRJIT_DIR ${CMAKE_SOURCE_DIR}/ext/drjit)
-set(PYBIND11_ROOT ${DRJIT_DIR}/ext/pybind11)
-
-add_subdirectory(${PYBIND11_ROOT})
-
-option(BUILD_SHARED_LIBS "Build shared libraries" ON)
-
-option(CUDA_REMOVE_GLOBAL_MEMORY_SPACE_WARNING
-       "Suppress the \"Advisory: Cannot tell what pointer points to, assuming global memory space\" warning nvcc makes." ON)
-option(CUDA_GENERATE_DEPENDENCIES_DURING_CONFIGURE
-       "Generate dependencies during configure time instead of only during build time." OFF)
-
-find_package(CUDA 11.0 REQUIRED)
-mark_as_advanced(CLEAR CUDA_64_BIT_DEVICE_CODE)
+find_package(Python 3.10 REQUIRED COMPONENTS Interpreter Development.Module)
+execute_process(COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+    OUTPUT_VARIABLE nanobind_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY)
+execute_process(COMMAND "${Python_EXECUTABLE}" -c "import importlib.util, pathlib; print(pathlib.Path(importlib.util.find_spec('drjit').origin).parent / 'cmake' / 'drjit')"
+    OUTPUT_VARIABLE drjit_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY)
+# Dr.Jit 1.5.0 wheels use nanobind ABI 20 and the 'drjit' domain.
+find_package(nanobind 2.13.0 EXACT CONFIG REQUIRED)
+find_package(drjit 1.5.0 EXACT CONFIG REQUIRED)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
-
-set(CUDA_GENERATED_OUTPUT_DIR "${CMAKE_BINARY_DIR}/lib/ptx")
-
-include_directories(
-    include/
-    ${DRJIT_DIR}/include
-    ${PYBIND11_ROOT}/include
-    ${PYTHON_INCLUDE_DIRS}
-    ${PYTHON_ROOT}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/cuda
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_BINARY_DIR}/include
-    ${CMAKE_CURRENT_BINARY_DIR}
-    ${CUDA_INCLUDE_DIRS}
-)
 
 set(PSDR_INCLUDE_DIR include/psdr)
 set(PSDR_SOURCE_DIR src)
@@ -77,9 +48,6 @@ set(PSDR_SOURCE_FILES
 
     ${PSDR_INCLUDE_DIR}/core/pmf.h
     ${PSDR_SOURCE_DIR}/core/pmf.cpp
-
-    ${PSDR_INCLUDE_DIR}/optix/ptx.h
-    ${PSDR_SOURCE_DIR}/optix/ptx.cpp
 
     ${PSDR_INCLUDE_DIR}/bsdf/bsdf.h
     ${PSDR_INCLUDE_DIR}/bsdf/diffuse.h
@@ -145,7 +113,6 @@ set(PSDR_SOURCE_FILES
     ${PSDR_INCLUDE_DIR}/integrator/direct.h
     ${PSDR_SOURCE_DIR}/integrator/direct.cpp
 
-
     ${PSDR_INCLUDE_DIR}/integrator/path.h
     ${PSDR_SOURCE_DIR}/integrator/path.cpp
 
@@ -156,38 +123,21 @@ set(PSDR_SOURCE_FILES
     ${PSDR_SOURCE_DIR}/psdr.cpp
 )
 
-set(CUDA_SOURCE_FILES
-    # ./cuda/kernel/knn.cu
-    ./cuda/kernel/util.cu
-    # ./cuda/kernel/NEE.cu
-)
-
-if( WIN32 )
-    cuda_add_library(cu_library STATIC ${CUDA_SOURCE_FILES})
-    cuda_add_cublas_to_target(cu_library)
-    pybind11_add_module(psdr_jit  ${PSDR_SOURCE_FILES})
-    target_compile_options(psdr_jit PRIVATE /O2 /wd4251 /MP)
-    add_subdirectory(${DRJIT_DIR})
-    set(PYPSDR_LIBRARIES drjit-core drjit-autodiff nanothread)
-    target_link_libraries(psdr_jit PRIVATE cu_library ${PYPSDR_LIBRARIES} ${CUDA_LIBRARIES})
+nanobind_add_module(psdr_jit NB_STATIC NB_DOMAIN drjit ${PSDR_SOURCE_FILES})
+target_include_directories(psdr_jit PRIVATE include "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(psdr_jit PRIVATE drjit drjit-core drjit-extra nanothread)
+if(MSVC)
+    target_compile_definitions(psdr_jit PRIVATE _USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(psdr_jit PRIVATE /wd4251 /bigobj)
 else()
-    cuda_add_library(cu_library STATIC ${CUDA_SOURCE_FILES})
-    cuda_add_cublas_to_target(cu_library)
-    add_subdirectory(${DRJIT_DIR})
-    set(PYPSDR_LIBRARIES drjit-core drjit-autodiff nanothread)
-    cuda_add_library(psdr_jit MODULE ${PSDR_SOURCE_FILES})
-    target_link_libraries(psdr_jit cu_library ${PYPSDR_LIBRARIES} ${CUDA_LIBRARIES})
+    target_compile_options(psdr_jit PRIVATE -Wall -Wno-reorder -Wno-sign-compare)
 endif()
 
-install(TARGETS psdr_jit drjit-core drjit-autodiff nanothread DESTINATION psdr_jit)
-install(TARGETS drjit-python drjit-core drjit-autodiff nanothread DESTINATION drjit)
-install(DIRECTORY ${DRJIT_DIR}/drjit DESTINATION ${SKBUILD_PLATLIB_DIR})
+install(TARGETS psdr_jit LIBRARY DESTINATION psdr_jit RUNTIME DESTINATION psdr_jit)
 
-target_compile_definitions(psdr_jit PRIVATE PTX_OUTPUT_DIR="${CUDA_GENERATED_OUTPUT_DIR}")
-set_target_properties(psdr_jit drjit-python drjit-core drjit-autodiff nanothread PROPERTIES
+set_target_properties(psdr_jit PROPERTIES
     SKIP_BUILD_RPATH FALSE
     BUILD_WITH_INSTALL_RPATH FALSE
-    INSTALL_RPATH "$ORIGIN"
-    INSTALL_RPATH_USE_LINK_PATH TRUE)
-set_property(TARGET psdr_jit PROPERTY CXX_STANDARD 17)
+    INSTALL_RPATH "$ORIGIN/../drjit"
+    INSTALL_RPATH_USE_LINK_PATH FALSE)
 set_target_properties(psdr_jit PROPERTIES PREFIX "")

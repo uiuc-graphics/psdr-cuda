@@ -11,6 +11,7 @@ struct Sampler {
     // std::shared_ptr<Sampler> clone();
 
     void seed(UInt64C seed_value);
+    void seed_indices(UInt64C seed_value, const UInt64C &indices);
 
     inline bool is_ready() const { return m_rng != nullptr; }
 
@@ -35,7 +36,7 @@ struct Sampler {
     }
 
     int64_t m_sample_count = 0;
-    uint64_t m_base_seed = PCG32_DEFAULT_STATE;
+    uint64_t m_base_seed = PCG32::PCG32_DEFAULT_STATE;
     std::unique_ptr<PCG32> m_rng = nullptr;
 };
 

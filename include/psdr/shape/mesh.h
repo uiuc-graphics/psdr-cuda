@@ -12,7 +12,9 @@ NAMESPACE_BEGIN(psdr_jit)
 
 PSDR_CLASS_DECL_BEGIN(Mesh, final, Object)
 public:
-    Mesh() = default;
+    Mesh() : Object("Mesh") {}
+    Mesh(const Mesh &other);
+    Mesh &operator=(const Mesh &) = delete;
     ~Mesh() override;
 
     void load_raw(const Vector3fC &new_vertex_positions, const Vector3iC &new_face_indices, 
@@ -124,7 +126,7 @@ public:
     // 4   : storing the third vertex of face with index stored in [2]
     Vectori<5, true>    m_edge_indices;
 
-    float               m_total_area, m_inv_total_area;
+    float               m_total_area = 0.f, m_inv_total_area = 0.f;
 
     // For position sampling
     DiscreteDistribution *m_face_distrb = nullptr;
@@ -138,7 +140,7 @@ public:
     FloatC              m_vertex_buffer;
     IntC                m_face_buffer;
 
-    DRJIT_VCALL_REGISTER(FloatD, Mesh);
+    static constexpr const char *Domain = "Mesh";
 
 protected:
     template <bool ad>
@@ -147,16 +149,12 @@ PSDR_CLASS_DECL_END(Mesh)
 
 NAMESPACE_END(psdr_jit)
 
-DRJIT_VCALL_BEGIN(psdr_jit::Mesh)
-    // DRJIT_VCALL_GETTER(m_bsdf, const Emitter *)
-    // DRJIT_VCALL_GETTER(m_emitter, const typename Class::Emitter *)
-
-    // DRJIT_VCALL_GETTER(flags, uint32_t)
-    DRJIT_VCALL_METHOD(bsdf)
-    DRJIT_VCALL_METHOD(emitter)
-    DRJIT_VCALL_METHOD(get_obj_mask)
-    DRJIT_VCALL_METHOD(get_obj_id)
-    DRJIT_VCALL_METHOD(sample_position)
-    DRJIT_VCALL_METHOD(sample_position_pdf)
-    DRJIT_VCALL_METHOD(sample_position_pdfD)
-DRJIT_VCALL_END(psdr_jit::Mesh)
+DRJIT_CALL_BEGIN(psdr_jit::Mesh)
+    DRJIT_CALL_GETTER(bsdf)
+    DRJIT_CALL_GETTER(emitter)
+    DRJIT_CALL_METHOD(get_obj_mask)
+    DRJIT_CALL_METHOD(get_obj_id)
+    DRJIT_CALL_METHOD(sample_position)
+    DRJIT_CALL_METHOD(sample_position_pdf)
+    DRJIT_CALL_METHOD(sample_position_pdfD)
+DRJIT_CALL_END()

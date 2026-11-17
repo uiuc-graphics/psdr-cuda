@@ -3,7 +3,7 @@
 ## Publish to PyPI
 The following was taken from [this guide](https://realpython.com/pypi-publish-python-package/#publish-your-package-to-pypi).
 
-Intalll the necessary packages:
+Install the necessary packages:
 ```bash
 pip install build twine
 ```

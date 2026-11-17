@@ -7,6 +7,7 @@ NAMESPACE_BEGIN(psdr_jit)
 
 PSDR_CLASS_DECL_BEGIN(Emitter,, Object)
 public:
+    Emitter() : Object("Emitter") {}
     virtual ~Emitter() override {}
 
     virtual void configure() = 0;
@@ -47,20 +48,20 @@ public:
     bool m_ready = false;
     float m_sampling_weight = 1.f;
 
-    DRJIT_VCALL_REGISTER(FloatD, Emitter);
+    static constexpr const char *Domain = "Emitter";
 
 PSDR_CLASS_DECL_END(Emitter)
 
 NAMESPACE_END(psdr_jit)
 
-DRJIT_VCALL_BEGIN(psdr_jit::Emitter)
-    DRJIT_VCALL_METHOD(eval)
-    DRJIT_VCALL_METHOD(evalC)
-    DRJIT_VCALL_METHOD(evalD)
-    DRJIT_VCALL_METHOD(sample_position)
-    DRJIT_VCALL_METHOD(sample_positionC)
-    DRJIT_VCALL_METHOD(sample_positionD)
-    DRJIT_VCALL_METHOD(sample_position_pdf)
-    DRJIT_VCALL_METHOD(sample_position_pdfC)
-    DRJIT_VCALL_METHOD(sample_position_pdfD)
-DRJIT_VCALL_END(psdr_jit::Emitter)
+DRJIT_CALL_BEGIN(psdr_jit::Emitter)
+    DRJIT_CALL_METHOD(eval)
+    DRJIT_CALL_METHOD(evalC)
+    DRJIT_CALL_METHOD(evalD)
+    DRJIT_CALL_METHOD(sample_position)
+    DRJIT_CALL_METHOD(sample_positionC)
+    DRJIT_CALL_METHOD(sample_positionD)
+    DRJIT_CALL_METHOD(sample_position_pdf)
+    DRJIT_CALL_METHOD(sample_position_pdfC)
+    DRJIT_CALL_METHOD(sample_position_pdfD)
+DRJIT_CALL_END()

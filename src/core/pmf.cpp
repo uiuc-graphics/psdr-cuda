@@ -7,7 +7,7 @@ void DiscreteDistribution::init(const FloatC &pmf) {
     m_size = static_cast<int>((pmf.size()));
     m_sum = sum(pmf);
     m_pmf = pmf;
-    FloatC temp = drjit::migrate(m_pmf, AllocType::Host);
+    FloatC temp = drjit::migrate(m_pmf, JitBackend::None);
     drjit::sync_thread();
     m_cmf = compute_cdf(temp);
     m_pmf_normalized = pmf/m_sum;
@@ -36,7 +36,7 @@ std::pair<IntC, FloatC> DiscreteDistribution::sample_reuse(Float<ad> &samples) c
     IntC idx;
     if constexpr ( ad ) {
         idx = binary_search<IntC>(
-            0, m_size - 1, [&](IntC i)DRJIT_INLINE_LAMBDA { return gather<FloatC>(m_cmf, i) < detach(samples); }
+            0, m_size - 1, [&](IntC i)DRJIT_INLINE_LAMBDA { return gather<FloatC>(m_cmf, i) < detach<false>(samples); }
         );
     } else {
         idx = binary_search<IntC>(

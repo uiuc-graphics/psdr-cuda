@@ -1,9 +1,15 @@
 *.o
 *.so
+*.pyd
+*.dll
+*.lib
+*.exp
 *.log
 *.exe
 __pycache__
 build/
+.venv/
+.pytest_cache/
 ext_win64/
 local/
 examples/

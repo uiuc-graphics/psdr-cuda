@@ -46,12 +46,14 @@ Spectrum<ad> CollocatedIntegrator::__Li(const Scene &scene, const Ray<ad> &ray, 
             
             result = bsdf_array->evalC(its, its.wi, active)/sqr(its.t);
         }
-        result *= detach(m_intensity);
+        result *= detach<false>(m_intensity);
     }
 
     // result[!active] = Spectrum<ad>(1.0);
 
-    return result;
+    // Misses may carry a zero distance: mask after division so 0/0 does not
+    // erase silhouette contributions when edge rays straddle the mesh.
+    return select(active, result, 0.f);
 }
 
 NAMESPACE_END(psdr_jit)

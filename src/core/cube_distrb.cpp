@@ -8,7 +8,7 @@ NAMESPACE_BEGIN(psdr_jit)
 
 template <int ndim>
 void HyperCubeDistribution<ndim>::set_resolution(const Array<int, ndim> &reso) {
-	if ( m_resolution != reso ) {
+	if ( any(m_resolution != reso) ) {
 		Array<int64_t, ndim> prod_reso;
 		prod_reso[ndim - 1] = reso[ndim - 1];
 		for ( int i = ndim - 2; i >= 0; --i )
@@ -67,7 +67,7 @@ void CubeDistribution::set_resolution(const Array<int, 2> &reso) {
 
 	// std::cout << "set reolution for CubeDistribution" << std::endl;
 	// std::cout << reso << std::endl;
-	if ( m_resolution != reso ) {
+	if ( any(m_resolution != reso) ) {
 		Array<int64_t, 2> prod_reso;
 		prod_reso[1] = reso[1];
 		for ( int i = 0; i >= 0; --i )

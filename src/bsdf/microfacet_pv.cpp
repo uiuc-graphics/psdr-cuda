@@ -148,7 +148,7 @@ Vectorf<n, ad> MicrofacetPerVertex::__interpolate(const Intersection<ad> &its, c
         v_ = v;
     }
     else {
-        v_ = detach(v);
+        v_ = detach<false>(v);
     }
     auto v0 = gather<Vectorf<n, ad>>(v_, its.face_indices[0], active);
     auto v1 = gather<Vectorf<n, ad>>(v_, its.face_indices[1], active);

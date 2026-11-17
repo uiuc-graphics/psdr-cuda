@@ -23,7 +23,7 @@ inline static FloatC Boundary_NEE(const Scene &scene, int active_sensor, const V
     }
 
     MaskC valid = bss.is_valid;
-    const Vector3fC &_p0    = detach(bss.p0);
+    const Vector3fC &_p0    = detach<false>(bss.p0);
     Vector3fC       _p2, _dir;
     _dir = bss.p2;
     IntersectionC _its2 = scene.ray_intersect<false>(RayC(_p0, _dir), valid); 

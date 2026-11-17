@@ -5,13 +5,11 @@
 #include <psdr/scene/scene_optix.h>
 #include <psdr/shape/mesh.h>
 
-
+#include <drjit-core/jit.h>
 #include <drjit/autodiff.h>
 #include <drjit/idiv.h>
-#include <drjit/loop.h>
+#include <drjit/while_loop.h>
 #include <drjit/texture.h>
-#include <pybind11/stl.h>
-#include <pybind11/operators.h>
 
 
 // #include <drjit-core/array.h>
@@ -83,7 +81,7 @@ struct PathTracerState {
     uint32_t pipeline_jit_index;
     uint32_t sbt_jit_index ;
     UInt64 handle;
-    void* d_gas;
+    void* d_gas = nullptr;
     UInt32 pipeline_handle;
     UInt32 sbt_handle;
     OptixPipelineCompileOptions    pipeline_compile_options = {};
@@ -96,7 +94,7 @@ struct PathTracerState {
     OptixProgramGroup pg[2];
     OptixAccelBuildOptions accel_options {};
     OptixAccelBufferSizes gas_buffer_sizes;
-    void *d_gas_temp;
+    void *d_gas_temp = nullptr;
     size_t  h_compacted_size = 0;
 };
 
@@ -118,7 +116,8 @@ Scene_OptiX::Scene_OptiX() {
 
 Scene_OptiX::~Scene_OptiX() {
     if ( m_accel != nullptr ) {
-        // optix_release(*m_accel);
+        drjit::eval();
+        jit_sync_thread();
         jit_free((m_accel)->d_gas);
         delete m_accel;
     }
@@ -133,6 +132,22 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
     face_offset[0] = 0;
     for ( size_t i = 0; i < num_meshes; ++i ) {
         face_offset[i + 1] = face_offset[i] + meshes[i]->m_num_faces;
+    }
+
+    // Push CUDA context to ensure we're using the right context for OptiX operations
+    struct ContextGuard {
+        ContextGuard() { jit_cuda_push_context(jit_cuda_context()); }
+        ~ContextGuard() { jit_cuda_pop_context(); }
+    } context_guard;
+
+    // SBT storage is sized to the mesh count. Recreate it when topology grows
+    // or shrinks instead of writing past the previous allocation.
+    if (m_accel && m_accel->hg_sbts.size() != num_meshes) {
+        drjit::eval();
+        jit_sync_thread();
+        jit_free(m_accel->d_gas);
+        delete m_accel;
+        m_accel = nullptr;
     }
 
     if ( m_accel == nullptr ) {
@@ -173,7 +188,7 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
         size_t log_size = sizeof(log);
 
         
-        int rv = optixModuleCreateFromPTX(
+        int rv = optixModuleCreate(
             m_accel->context, &m_accel->module_compile_options, &m_accel->pipeline_compile_options,
             miss_and_closesthit_ptx, strlen(miss_and_closesthit_ptx), log,
             &log_size, &m_accel->mod);
@@ -205,7 +220,7 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
         // Shader binding table setup
         // =====================================================
         m_accel->sbt.missRecordBase =
-            jit_malloc(AllocType::HostPinned, OPTIX_SBT_RECORD_HEADER_SIZE);
+            jit_malloc(JitBackend::None, OPTIX_SBT_RECORD_HEADER_SIZE);
         m_accel->sbt.missRecordStrideInBytes     = OPTIX_SBT_RECORD_HEADER_SIZE;
         m_accel->sbt.missRecordCount             = 1;
 
@@ -218,18 +233,18 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
 
         }
         m_accel->sbt.hitgroupRecordBase =
-            jit_malloc(AllocType::HostPinned, num_meshes * sizeof(HitGroupSbtRecord));
+            jit_malloc(JitBackend::None, num_meshes * sizeof(HitGroupSbtRecord));
         m_accel->sbt.hitgroupRecordStrideInBytes = sizeof(HitGroupSbtRecord);
         m_accel->sbt.hitgroupRecordCount         = num_meshes;
         jit_optix_check(optixSbtRecordPackHeader(m_accel->pg[0], m_accel->sbt.missRecordBase));
-        jit_memcpy_async(JitBackend::CUDA, m_accel->sbt.hitgroupRecordBase, m_accel->hg_sbts.data(),
+        std::memcpy(m_accel->sbt.hitgroupRecordBase, m_accel->hg_sbts.data(),
                              num_meshes * sizeof(HitGroupSbtRecord));
                              
 
         m_accel->sbt.missRecordBase =
-            jit_malloc_migrate(m_accel->sbt.missRecordBase, AllocType::Device, 1);
+            jit_malloc_migrate(m_accel->sbt.missRecordBase, JitBackend::CUDA, 1);
         m_accel->sbt.hitgroupRecordBase =
-            jit_malloc_migrate(m_accel->sbt.hitgroupRecordBase, AllocType::Device, 1);
+            jit_malloc_migrate(m_accel->sbt.hitgroupRecordBase, JitBackend::CUDA, 1);
 
 
         // =====================================================
@@ -262,6 +277,12 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
                                 num_meshes * sizeof(HitGroupSbtRecord));
 
 
+    // Ensure mesh buffers are evaluated and synchronized
+    for ( size_t i = 0; i < num_meshes; ++i ) {
+        drjit::eval(meshes[i]->m_vertex_buffer, meshes[i]->m_face_buffer);
+    }
+    drjit::sync_thread();
+
     uint32_t triangle_input_flags[] = { OPTIX_GEOMETRY_FLAG_DISABLE_ANYHIT };
     std::vector<void*> vertex_buffer_ptrs(num_meshes);
     std::vector<OptixBuildInput> build_inputs(num_meshes);
@@ -272,7 +293,7 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
         build_inputs[i].triangleArray.vertexFormat  = OPTIX_VERTEX_FORMAT_FLOAT3;
         build_inputs[i].triangleArray.numVertices   = static_cast<uint32_t>(mesh->m_num_vertices);
 
-        vertex_buffer_ptrs[i] = jit_malloc(AllocType::Device, sizeof(float)*(mesh->m_num_vertices*3));
+        vertex_buffer_ptrs[i] = jit_malloc(JitBackend::CUDA, sizeof(float)*(mesh->m_num_vertices*3));
         jit_memcpy(JitBackend::CUDA, vertex_buffer_ptrs[i], mesh->m_vertex_buffer.data(), sizeof(float)*(mesh->m_num_vertices*3));
 
         build_inputs[i].triangleArray.vertexBuffers = &vertex_buffer_ptrs[i];
@@ -291,24 +312,26 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
         m_accel->context, &m_accel->accel_options, build_inputs.data(), num_meshes, &m_accel->gas_buffer_sizes));
 
     m_accel->d_gas_temp =
-        jit_malloc(AllocType::Device, m_accel->gas_buffer_sizes.tempSizeInBytes);
+        jit_malloc(JitBackend::CUDA, m_accel->gas_buffer_sizes.tempSizeInBytes);
 
     if ((m_accel)->d_gas != nullptr) {
         jit_free((m_accel)->d_gas);
     }
     
 
-    m_accel->d_gas = jit_malloc(AllocType::Device, m_accel->gas_buffer_sizes.outputSizeInBytes);
+    m_accel->d_gas = jit_malloc(JitBackend::CUDA, m_accel->gas_buffer_sizes.outputSizeInBytes);
 
-    size_t *d_compacted_size = (size_t *) jit_malloc(AllocType::Device, sizeof(size_t));
+    size_t *d_compacted_size = (size_t *) jit_malloc(JitBackend::CUDA, sizeof(size_t));
     
     
     m_accel->build_property.type = OPTIX_PROPERTY_TYPE_COMPACTED_SIZE;
     m_accel->build_property.result = d_compacted_size;
 
-    
+    // Sync CUDA operations before OptiX acceleration structure build
+    jit_sync_thread();
+
     jit_optix_check(optixAccelBuild(
-        m_accel->context, 0, &m_accel->accel_options, build_inputs.data(), num_meshes, m_accel->d_gas_temp,
+        m_accel->context, jit_cuda_stream(), &m_accel->accel_options, build_inputs.data(), num_meshes, m_accel->d_gas_temp,
         m_accel->gas_buffer_sizes.tempSizeInBytes, m_accel->d_gas,
         m_accel->gas_buffer_sizes.outputSizeInBytes, &m_accel->gas_handle, &m_accel->build_property, 1));
 
@@ -321,7 +344,7 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
     jit_memcpy(JitBackend::CUDA, &m_accel->h_compacted_size, d_compacted_size, sizeof(size_t));
 
     if (m_accel->h_compacted_size < m_accel->gas_buffer_sizes.outputSizeInBytes) {
-        void *d_gas_compact = jit_malloc(AllocType::Device, m_accel->h_compacted_size);
+        void *d_gas_compact = jit_malloc(JitBackend::CUDA, m_accel->h_compacted_size);
         jit_optix_check(optixAccelCompact(m_accel->context, jit_cuda_stream(),
                                             m_accel->gas_handle, d_gas_compact,
                                             m_accel->h_compacted_size, &m_accel->gas_handle));
@@ -330,7 +353,7 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
     }
 
     jit_free(d_compacted_size);
-    
+
 }
 
 
@@ -356,13 +379,13 @@ Intersection_OptiX Scene_OptiX::ray_intersect(const Ray<ad> &ray, Mask<ad> &acti
     m_its.reserve(m);
     FloatC ox,oy,oz,dx,dy,dz;
     if constexpr(ad) {
-           ox = detach(ray.o.x()),
-           oy = detach(ray.o.y()),
-           oz = detach(ray.o.z());
+           ox = detach<false>(ray.o.x()),
+           oy = detach<false>(ray.o.y()),
+           oz = detach<false>(ray.o.z());
 
-           dx = detach(ray.d.x()),
-           dy = detach(ray.d.y()),
-           dz = detach(ray.d.z());
+           dx = detach<false>(ray.d.x()),
+           dy = detach<false>(ray.d.y()),
+           dz = detach<false>(ray.d.z());
     } else {
            ox = ray.o.x(),
            oy = ray.o.y(), //268.342, 540.3, 278.433 
@@ -395,6 +418,9 @@ Intersection_OptiX Scene_OptiX::ray_intersect(const Ray<ad> &ray, Mask<ad> &acti
     };
 
     jit_optix_ray_trace(sizeof(trace_args) / sizeof(uint32_t), trace_args,
+                        0, nullptr, nullptr,  // no hit objects
+                        0, 0, 0,              // no reordering
+                        1,                    // invoke
                         active.index(), m_accel->pipeline_handle.index(), m_accel->sbt_handle.index());
     using Single = drjit::float32_array_t<FloatC>;
     m_its.shape_id = UInt32::steal(trace_args[15]); // slow

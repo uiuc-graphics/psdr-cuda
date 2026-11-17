@@ -24,7 +24,7 @@ DRJIT_INLINE ArrayD compressD(const ArrayD &array, const MaskD &active) {
 template <typename ArrayD>
 DRJIT_INLINE size_t slices(const ArrayD &cuda_array) {
     size_t m;
-    if constexpr (array_depth_v<ArrayD> == 1) {
+    if constexpr (depth_v<ArrayD> == 1) {
         m = cuda_array.size();
     } else {
         m = cuda_array[0].size();

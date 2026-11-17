@@ -10,7 +10,7 @@ void init_optix_api() {
     L(optixAccelComputeMemoryUsage);
     L(optixAccelBuild);
     L(optixAccelCompact);
-    L(optixModuleCreateFromPTX);
+    L(optixModuleCreate);
     L(optixModuleDestroy)
     L(optixProgramGroupCreate);
     L(optixProgramGroupDestroy)

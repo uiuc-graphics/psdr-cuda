@@ -9,14 +9,14 @@ NAMESPACE_BEGIN(psdr_jit)
 void AreaLight::configure() {
     PSDR_ASSERT((m_mesh != nullptr) && m_mesh->m_ready);
     m_sampling_weight = m_mesh->m_total_area*
-        rgb2luminance<false>(detach(m_radiance))[0];
+        rgb2luminance<false>(detach<false>(m_radiance))[0];
     m_ready = true;
 }
 
 
 SpectrumC AreaLight::eval(const IntersectionC &its, MaskC active) const {
     PSDR_ASSERT(m_ready);
-    return select(active && FrameC::cos_theta(its.wi) > 0.f, detach(m_radiance), 0.f);
+    return select(active && FrameC::cos_theta(its.wi) > 0.f, detach<false>(m_radiance), 0.f);
 }
 
 
@@ -78,7 +78,11 @@ Float<ad> AreaLight::__sample_position_pdf(const Vector3f<ad> &ref_p, const Inte
 
 std::string AreaLight::to_string() const {
     std::ostringstream oss;
-    oss << "AreaLight[radiance = " << m_radiance << ", sampling_weight = " << m_sampling_weight << "]";
+    std::operator<<(oss, "AreaLight[radiance = ");
+    oss << m_radiance;
+    std::operator<<(oss, ", sampling_weight = ");
+    oss << m_sampling_weight;
+    std::operator<<(oss, "]");
     return oss.str();
 }
 

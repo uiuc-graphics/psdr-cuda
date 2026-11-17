@@ -16,7 +16,7 @@
 #include <chrono>
 #include <numeric>
 
-#include <drjit/loop.h>
+#include <drjit/while_loop.h>
 
 NAMESPACE_BEGIN(psdr_jit)
 
@@ -62,6 +62,29 @@ static std::pair<TriangleInfo<ad>, Vector3f<ad>> process_mesh(const Vector3f<ad>
 }
 
 
+
+Mesh::Mesh(const Mesh &other) : Object(other) {
+    // Copy authoring data, but rebuild the owned sampling/geometry caches.
+    // Sharing these raw pointers caused double frees after add_Mesh().
+    m_use_face_normals = other.m_use_face_normals;
+    m_enable_edges = other.m_enable_edges;
+    m_edge_sort = other.m_edge_sort;
+    m_to_world_raw = other.m_to_world_raw;
+    m_to_world_left = other.m_to_world_left;
+    m_to_world_right = other.m_to_world_right;
+    m_bsdf = other.m_bsdf;
+    m_num_vertices = other.m_num_vertices;
+    m_num_faces = other.m_num_faces;
+    m_has_uv = other.m_has_uv;
+    m_vertex_positions_raw = other.m_vertex_positions_raw;
+    m_vertex_normals_raw = other.m_vertex_normals_raw;
+    m_vertex_uv = other.m_vertex_uv;
+    m_face_indices = other.m_face_indices;
+    m_face_uv_indices = other.m_face_uv_indices;
+    m_edge_indices = other.m_edge_indices;
+    m_valid_edge_indices = other.m_valid_edge_indices;
+    m_cut_position = other.m_cut_position;
+}
 
 Mesh::~Mesh() {
     if ( m_face_distrb ) delete m_face_distrb;
@@ -349,7 +372,7 @@ void Mesh::configure() {
     }
 
     if ( m_face_distrb == nullptr ) m_face_distrb = new DiscreteDistribution();
-    m_face_distrb->init(detach(face_areas));
+    m_face_distrb->init(detach<false>(face_areas));
 
 
     if ( m_enable_edges ) {
@@ -378,7 +401,8 @@ void Mesh::configure() {
     drjit::make_opaque(m_vertex_positions, m_vertex_normals_raw, m_to_world_left, m_to_world_raw, m_to_world_right, m_triangle_uv);
 
     prepare_optix_buffers();
-    drjit::eval(); drjit::sync_thread();
+    drjit::eval(m_vertex_buffer, m_face_buffer);
+    drjit::sync_thread();
 }
 
 
@@ -389,13 +413,13 @@ void Mesh::prepare_optix_buffers() {
     m_vertex_buffer = empty<FloatC>(m_num_vertices*3);
     idx = arange<IntC>(m_num_vertices)*3;
     for ( int i = 0; i < 3; ++i ) {
-        scatter(m_vertex_buffer, detach(m_vertex_positions[i]), idx + i);
+        scatter(m_vertex_buffer, detach<false>(m_vertex_positions[i]), idx + i);
     }
 
     m_face_buffer = empty<IntC>(m_num_faces*3);
     idx = arange<IntC>(m_num_faces)*3;
     for ( int i = 0; i < 3; ++i ) {
-        scatter(m_face_buffer, detach(m_face_indices[i]), idx + i);
+        scatter(m_face_buffer, detach<false>(m_face_indices[i]), idx + i);
     }
 }
 
@@ -431,13 +455,13 @@ PositionSample<ad> Mesh::__sample_position(const Vector2f<ad> &_sample2, Mask<ad
         Vector3fD e2 = gather<Vector3fD>(tri_data.e2, IntD(idx), active);
         Vector3fD face_normal = gather<Vector3fD>(tri_data.face_normal, IntD(idx), active);
 
-        result.J = face_area/detach(face_area);
+        result.J = face_area/detach<false>(face_area);
         result.p = bilinear<ad>(p0, e1, e2, sample2);
         result.n = face_normal;
 
     } else {
 
-        TriangleInfoC tri_data = detach(*m_triangle_info);
+        TriangleInfoC tri_data = detach<false>(*m_triangle_info);
         FloatC face_area = gather<FloatC>(tri_data.face_area, (idx), active);
         Vector3fC p0 = gather<Vector3fC>(tri_data.p0, (idx), active);
         Vector3fC e1 = gather<Vector3fC>(tri_data.e1, (idx), active);
@@ -448,8 +472,10 @@ PositionSample<ad> Mesh::__sample_position(const Vector2f<ad> &_sample2, Mask<ad
         result.p = bilinear<ad>(p0, e1, e2, sample2);
         result.n = face_normal;
     }
-    result.pdf = m_inv_total_area;
-    result.is_valid = true;
+    // Broadcast scalars to match the sample width
+    result.pdf = Float<ad>(m_inv_total_area) & active;  // Creates array with proper width
+    result.pdf = select(active, Float<ad>(m_inv_total_area), Float<ad>(0.f));
+    result.is_valid = active;  // Use active mask as is_valid (already has correct width)
     return result;
 }
 
@@ -470,19 +496,19 @@ void Mesh::dump(const char *fname, bool raw) const {
     std::array<std::vector<float>, 3> vertex_positions, vertex_normals;
     {
         if (!raw) {
-            const Vector3fC &vertex_positions_ = detach(m_vertex_positions_raw);
+            const Vector3fC &vertex_positions_ = detach<false>(m_vertex_positions_raw);
             copy_cuda_array<float, 3>(vertex_positions_, vertex_positions);
             if ( !m_use_face_normals ) {
                 Vector3fC vertex_normals_;
-                std::tie(std::ignore, vertex_normals_) = process_mesh<false>(vertex_positions_, detach(m_face_indices));
+                std::tie(std::ignore, vertex_normals_) = process_mesh<false>(vertex_positions_, detach<false>(m_face_indices));
                 copy_cuda_array<float, 3>(vertex_normals_, vertex_normals);
             }
         } else {
-            const Vector3fC &vertex_positions_ = detach(m_vertex_positions);
+            const Vector3fC &vertex_positions_ = detach<false>(m_vertex_positions);
             copy_cuda_array<float, 3>(vertex_positions_, vertex_positions);
             if ( !m_use_face_normals ) {
                 Vector3fC vertex_normals_;
-                std::tie(std::ignore, vertex_normals_) = process_mesh<false>(vertex_positions_, detach(m_face_indices));
+                std::tie(std::ignore, vertex_normals_) = process_mesh<false>(vertex_positions_, detach<false>(m_face_indices));
                 copy_cuda_array<float, 3>(vertex_normals_, vertex_normals);
             }
         }
@@ -499,12 +525,12 @@ void Mesh::dump(const char *fname, bool raw) const {
     }
 
     std::array<std::vector<int32_t>, 3> face_indices;
-    copy_cuda_array<int32_t, 3>(detach(m_face_indices), face_indices);
+    copy_cuda_array<int32_t, 3>(detach<false>(m_face_indices), face_indices);
     if ( m_has_uv ) {
         std::array<std::vector<float>, 2> vertex_uv;
         std::array<std::vector<int32_t>, 3> face_uv_indices;
-        copy_cuda_array<float, 2>(detach(m_vertex_uv), vertex_uv);
-        copy_cuda_array<int32_t, 3>(detach(m_face_uv_indices), face_uv_indices);
+        copy_cuda_array<float, 2>(detach<false>(m_vertex_uv), vertex_uv);
+        copy_cuda_array<int32_t, 3>(detach<false>(m_face_uv_indices), face_uv_indices);
 
 
         int m = static_cast<int>(slices<Vector2fD>(m_vertex_uv));
@@ -544,9 +570,9 @@ void Mesh::dump(const char *fname, bool raw) const {
 std::string Mesh::to_string() const {
     std::cout << "has to string" << std::endl;
     std::stringstream oss;
-    oss << "Mesh[nv=" << m_num_vertices << ", nf=" << m_num_faces;
-    if ( m_id != "" ) oss << ", id=" << m_id;
-    oss << ", bsdf=" << m_bsdf->to_string() << "]";
+    std::operator<<(oss, "Mesh[nv="); oss << m_num_vertices; std::operator<<(oss, ", nf="); oss << m_num_faces;
+    if ( m_id != "" ) { std::operator<<(oss, ", id="); std::operator<<(oss, m_id); }
+    std::operator<<(oss, ", bsdf="); std::operator<<(oss, m_bsdf->to_string()); std::operator<<(oss, "]");
     return oss.str();
 }
 

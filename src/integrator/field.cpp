@@ -8,8 +8,10 @@
 
 NAMESPACE_BEGIN(psdr_jit)
 
-FieldExtractionIntegrator::FieldExtractionIntegrator(char *field) {
-    std::string field_name = strtok(field, " ");
+FieldExtractionIntegrator::FieldExtractionIntegrator(const char *field) {
+    std::istringstream fields(field);
+    std::string field_name;
+    fields >> field_name;
     PSDR_ASSERT_MSG(
         field_name == "bsdf" ||
         field_name == "segmentation" ||
@@ -23,13 +25,7 @@ FieldExtractionIntegrator::FieldExtractionIntegrator(char *field) {
     );
     m_field = field_name;
 
-   char *obj_name;
-   obj_name = strtok(NULL, " ");
-   if( obj_name != NULL ) {
-      m_object = obj_name;
-   } else {
-      m_object = "";
-   }
+    fields >> m_object;
 
 }
 
@@ -59,7 +55,7 @@ Spectrum<ad> FieldExtractionIntegrator::__Li(const Scene &scene, const Ray<ad> &
         if constexpr ( !ad ) { 
             valid_obj = its.shape->get_obj_mask(m_object);
         } else {
-            valid_obj = detach(its.shape)->get_obj_mask(m_object);
+            valid_obj = detach<false>(its.shape)->get_obj_mask(m_object);
         }
     }
 
@@ -69,7 +65,7 @@ Spectrum<ad> FieldExtractionIntegrator::__Li(const Scene &scene, const Ray<ad> &
             IntC rresult = (its.shape)->get_obj_id();
             result = Vector3f<ad>(rresult,rresult,rresult);
         } else {
-            IntC rresult = detach(its.shape)->get_obj_id();
+            IntC rresult = detach<false>(its.shape)->get_obj_id();
             result = Vector3f<ad>(rresult,rresult,rresult);
         }
     } else if ( m_field == "bsdf" ) {

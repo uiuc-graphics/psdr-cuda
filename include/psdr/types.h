@@ -2,15 +2,16 @@
 
 #include <drjit/jit.h>
 #include <drjit/autodiff.h>
-#include <drjit/struct.h>
-#include <drjit/vcall.h>
-#include <drjit/struct.h>
+#include <drjit/array.h>
+#include <drjit/call.h>
+#include <drjit/array.h>
 #include <drjit/matrix.h>
 #include <drjit/quaternion.h>
-
-using namespace drjit;
+#include <drjit/array_format.h>
 
 NAMESPACE_BEGIN(psdr_jit)
+
+using namespace drjit;
 
 /********************************************
  * GPU array types
@@ -22,7 +23,7 @@ using UInt64 = CUDAArray<uint64_t>;
 
 template <typename T, bool ad>
 using Type      = typename std::conditional<ad,
-                                            DiffArray<CUDAArray<T>>,
+                                            DiffArray<JitBackend::CUDA, T>,
                                             CUDAArray<T>>::type;
 
 
@@ -215,7 +216,7 @@ using UInt64C   = Type<uint64_t, false>;
 // Render options
 
 struct RenderOption {
-    RenderOption() : width(128), height(128), spp(1), sppe(0), log_level(1) {}
+    RenderOption() : width(128), height(128), spp(1), sppe(0), sppse(0), log_level(1) {}
     RenderOption(int w, int h, int s) : width(w), height(h), spp(s), sppe(s), sppse(s), log_level(1) {}
     RenderOption(int w, int h, int s1, int s2) : width(w), height(h), spp(s1), sppe(s2), sppse(s2), log_level(1) {}
     RenderOption(int w, int h, int s1, int s2, int s3) : width(w), height(h), spp(s1), sppe(s2), sppse(s3), log_level(1) {}

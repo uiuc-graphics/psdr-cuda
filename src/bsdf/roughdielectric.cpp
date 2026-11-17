@@ -60,8 +60,8 @@ Spectrum<ad> RoughDielectric::__eval(const Intersection<ad>& _its, const Vector3
         eta     = select(cos_theta_i > 0.f, m_eta, m_inv_eta);
         inv_eta = select(cos_theta_i > 0.f, m_inv_eta, m_eta);
     } else {
-        eta     = select(cos_theta_i > 0.f, detach(m_eta), detach(m_inv_eta));
-        inv_eta = select(cos_theta_i > 0.f, detach(m_inv_eta), detach(m_eta));
+        eta     = select(cos_theta_i > 0.f, detach<false>(m_eta), detach<false>(m_inv_eta));
+        inv_eta = select(cos_theta_i > 0.f, detach<false>(m_inv_eta), detach<false>(m_eta));
     }
 
     // Compute the half-vector
@@ -85,7 +85,7 @@ Spectrum<ad> RoughDielectric::__eval(const Intersection<ad>& _its, const Vector3
     if constexpr (ad) {
         F = std::get<0>(fresnel_dielectric<ad>(m_eta, dot(its.wi, m)));
     } else {
-        F = std::get<0>(fresnel_dielectric<ad>(detach(m_eta), dot(its.wi, m)));
+        F = std::get<0>(fresnel_dielectric<ad>(detach<false>(m_eta), dot(its.wi, m)));
     }
 
     // Smith's shadow-masking function
@@ -144,7 +144,7 @@ Float<ad> RoughDielectric::__pdf(const Intersection<ad>& _its, const Vector3f<ad
     if constexpr (ad) {
         eta = select(cos_theta_i > 0.f, m_eta, m_inv_eta);
     } else {
-        eta = select(cos_theta_i > 0.f, detach(m_eta), detach(m_inv_eta));
+        eta = select(cos_theta_i > 0.f, detach<false>(m_eta), detach<false>(m_inv_eta));
     }
 
     Vector3f<ad> m = normalize(its.wi + wo * select(reflect, 1.f, eta));
@@ -165,7 +165,7 @@ Float<ad> RoughDielectric::__pdf(const Intersection<ad>& _its, const Vector3f<ad
     if constexpr (ad) {
         mmeta = m_eta;
     } else {
-        mmeta = detach(m_eta);
+        mmeta = detach<false>(m_eta);
     }
 
     Float<ad> F = std::get<0>(fresnel_dielectric<ad>(mmeta, dot(its.wi, m)));
@@ -203,7 +203,7 @@ BSDFSample<ad> RoughDielectric::__sample(const Intersection<ad>& _its, const Vec
     if constexpr (ad) {
         eta = m_eta;
     } else {
-        eta = detach(m_eta);
+        eta = detach<false>(m_eta);
     }
 
     auto [F, cos_theta_t, eta_it, eta_ti] =

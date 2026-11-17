@@ -6,32 +6,58 @@ Old repo: https://github.com/uci-rendering/psdr-cuda
 
 
 ## Installation
-We use [`OptiX 7`](https://developer.nvidia.com/rtx/ray-tracing/optix) to accelerate ray tracing. Make sure [`cudatoolkit`](https://developer.nvidia.com/cuda-toolkit) (you may install it using `conda`) and an appropriate NVIDIA display driver that support `OptiX 7` are installed. The latest version we tested was `cudatoolkit==11.7`. Then run
-```bash
-pip install psdr-jit
-```
 
-## Local Intallation
-To install `psdr-jit` locally, first clone the repository recursivly (to include the git submodules):
+This source version uses **Dr.Jit 1.5.0** and **nanobind 2.13.0**. The nanobind
+version and `drjit` binding domain must match the ABI used by the Dr.Jit wheels.
+Build and runtime Dr.Jit versions are pinned together in `pyproject.toml`.
+
+Requirements:
+
+- Python 3.10 or newer, with a Dr.Jit wheel available for your platform.
+- A C++17 compiler (MSVC on Windows or GCC/Clang on Linux) and CMake 3.19+.
+- An NVIDIA GPU and driver supported by Dr.Jit's CUDA/OptiX backend to render.
+
+The build links against the installed Dr.Jit package. It does not compile a
+second Dr.Jit runtime or require a CUDA toolkit/submodule checkout. The unused
+standalone CUDA helper kernels are not part of the Python extension.
+
 ```bash
-git clone --recursive https://github.com/andyyankai/psdr-jit.git
-```
-or 
-```bash
-git clone https://github.com/andyyankai/psdr-jit.git
+git clone https://github.com/AI-yank/psdr-jit.git
 cd psdr-jit
-git submodule update --init --recursive
-```
-Then compile and install `psdr-jit` via
-```bash
-pip install .
-```
-or
-```bash
-pip install --no-build-isolation -ve .
+python -m pip install .
 ```
 
-Notice that it would also install `drjit` as `psdr-jit` depends on it. `cudatoolkit` is also required.
+For development:
+
+```bash
+python -m venv .venv
+# Activate .venv using the command for your shell.
+python -m pip install scikit-build-core nanobind==2.13.0 drjit==1.5.0
+python -m pip install --no-build-isolation -e ".[test]"
+python -m pytest tests -q
+```
+
+The tests exercise GPU rendering, typed Python bindings, forward/reverse AD,
+finite differences, batch rendering, and scene ownership/reconfiguration.
+They skip when a CUDA backend is unavailable. The current build was validated
+on Windows with Python 3.12 and an RTX 4090; Linux build/runtime validation is
+still needed.
+
+Known validation limitation: enabling `dr.JitFlag.Debug` with multi-material
+OptiX rendering crashes inside NVIDIA's `nvrtum64.dll` on the tested Windows
+driver 610.88. The root cause remains unresolved; normal-mode regression tests
+pass. `python tests/repro_debug_dispatch.py` reproduces the native crash on
+that configuration. It is intentionally separate from the pytest suite.
+
+The migration retains the existing Python entry points. Default secondary-edge
+samples are now zero. Configured meshes added to a scene own independent caches, objects
+are registered when configured and unregistered on destruction, and the
+OptiX binding table is rebuilt when the mesh count changes. Seeded batch
+rendering uses the same sample streams as the corresponding full-image pixels; edge gradients
+are accumulated at full resolution before gathering batch pixels. Collocated
+ray misses are masked after division to preserve silhouette gradients.
+Intersection mesh pointers retain their scene owner, and environment-only
+lighting has a nonzero emitter sampling weight.
 
 ## Getting Started
 ```python
@@ -43,8 +69,6 @@ import psdr_jit
 
 ```python
 import cv2
-import sys
-import torch
 
 import psdr_jit as psdr
 import drjit
@@ -75,14 +99,14 @@ sc.add_BSDF(psdr.DiffuseBSDF([0.95, 0.95, 0.95]), "white")
 sc.add_BSDF(psdr.DiffuseBSDF([0.20, 0.90, 0.20]), "green")
 sc.add_BSDF(psdr.DiffuseBSDF([0.90, 0.20, 0.20]), "red")
 
-sc.add_Mesh("./data/objects/cbox/cbox_luminaire.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,-0.5],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "light", psdr.AreaLight([20.0, 20.0, 8.0]))
-sc.add_Mesh("./data/objects/cbox/cbox_smallbox.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "cat", None)
-sc.add_Mesh("./data/objects/cbox/cbox_largebox.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "cat", None)
-sc.add_Mesh("./data/objects/cbox/cbox_floor.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "white", None)
-sc.add_Mesh("./data/objects/cbox/cbox_ceiling.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "white", None)
-sc.add_Mesh("./data/objects/cbox/cbox_back.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "white", None)
-sc.add_Mesh("./data/objects/cbox/cbox_greenwall.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "green", None)
-sc.add_Mesh("./data/objects/cbox/cbox_redwall.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "red", None)
+sc.add_Mesh("./tutorials/data/cbox/cbox_luminaire.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,-0.5],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "light", psdr.AreaLight([20.0, 20.0, 8.0]))
+sc.add_Mesh("./tutorials/data/cbox/cbox_smallbox.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "cat", None)
+sc.add_Mesh("./tutorials/data/cbox/cbox_largebox.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "cat", None)
+sc.add_Mesh("./tutorials/data/cbox/cbox_floor.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "white", None)
+sc.add_Mesh("./tutorials/data/cbox/cbox_ceiling.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "white", None)
+sc.add_Mesh("./tutorials/data/cbox/cbox_back.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "white", None)
+sc.add_Mesh("./tutorials/data/cbox/cbox_greenwall.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "green", None)
+sc.add_Mesh("./tutorials/data/cbox/cbox_redwall.obj", Matrix4fC([[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]]), "red", None)
 
 P = FloatD(0.)
 drjit.enable_grad(P)
@@ -94,7 +118,7 @@ sc.configure()
 sc.configure([0])
 
 img = integrator.renderD(sc, 0)
-org_img = img.numpy().reshape((sc.opts.width, sc.opts.height, 3))
+org_img = img.numpy().reshape((3, sc.opts.height, sc.opts.width)).transpose(1, 2, 0)
 output = cv2.cvtColor(org_img, cv2.COLOR_RGB2BGR)
 cv2.imwrite("psdr_jit_forward.exr", output)
 
@@ -102,13 +126,14 @@ cv2.imwrite("psdr_jit_forward.exr", output)
 drjit.set_grad(P, 1.0)
 drjit.forward_to(img)
 diff_img = drjit.grad(img)
-diff_img = diff_img.numpy().reshape((sc.opts.width, sc.opts.height, 3))
+diff_img = diff_img.numpy().reshape((3, sc.opts.height, sc.opts.width)).transpose(1, 2, 0)
 output = cv2.cvtColor(diff_img, cv2.COLOR_RGB2BGR)
 cv2.imwrite("psdr_jit_diff_debug.exr", output)
 ```
 
-### More Tutorial
-gradient evaluation tutorial in [`tutorial`](https://github.com/andyyankai/psdr-jit/tree/main/tutorials) folder
+### More tutorials
+
+See the gradient evaluation notebooks in [`tutorials`](tutorials).
 
 Object level optimization example: [`Neural-PBIR`](https://neural-pbir.github.io/) (ICCV 2023)
 

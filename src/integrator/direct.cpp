@@ -10,7 +10,7 @@
 #include <psdr/scene/scene.h>
 #include <psdr/sensor/perspective.h>
 #include <psdr/integrator/direct.h>
-#include <drjit/loop.h>
+#include <drjit/while_loop.h>
 
 NAMESPACE_BEGIN(psdr_jit)
 
@@ -67,7 +67,7 @@ Spectrum<ad> DirectIntegrator::__Li(const Scene &scene, Sampler &sampler, const 
                 bsdf_val2 = bsdf_array->evalD(its, wo_local, active_direct);
                 bsdf_val2 *= G_val*ps.J/ps.pdf;
                 pdf1 = bsdf_array->pdfD(its, wo_local, active_direct);
-                pdf1 *= detach(G_val);
+                pdf1 *= detach<false>(G_val);
             } else {
                 Vector3f<ad> wo_local = its.sh_frame.to_local(wod);
                 bsdf_val2 = bsdf_array->evalC(its, wo_local, active_direct);
@@ -105,16 +105,17 @@ Spectrum<ad> DirectIntegrator::__Li(const Scene &scene, Sampler &sampler, const 
                 wo /= its1.t;
                 FloatD cos_val = dot(its1.n, -wo);
                 FloatD G_val = abs(cos_val)/sqr(its1.t);
-                FloatD J = select(~its1.is_valid(), 1.0f, its1.J);
-                G_val = select(~its1.is_valid(), 1.0f, G_val);
-                pdf0 = bs.pdf*detach(G_val);
-                bsdf_val = select(detach(its1.t) < Epsilon, 0.0f, bsdf_array->evalD(its, its.sh_frame.to_local(wo), active) * G_val * J / pdf0);
+                MaskD its1_invalid = ~its1.is_valid();
+                FloatD J = select(its1_invalid, 1.0f, its1.J);
+                G_val = select(its1_invalid, 1.0f, G_val);
+                pdf0 = bs.pdf*detach<false>(G_val);
+                bsdf_val = select(MaskD(detach<false>(its1.t) < Epsilon), 0.0f, bsdf_array->evalD(its, its.sh_frame.to_local(wo), active) * G_val * J / pdf0);
             } else {
                 FloatC cos_val = dot(its1.n, -curr_ray.d);
                 FloatC G_val = abs(cos_val)/sqr(its1.t);
                 pdf0 = bs.pdf*G_val;
                 auto temp_bsdfa = bsdf_array->evalC(its, bs.wo, active);
-                bsdf_val = select(detach(its1.t) < Epsilon, 0.0f, temp_bsdfa / bs.pdf);
+                bsdf_val = select(detach<false>(its1.t) < Epsilon, 0.0f, temp_bsdfa / bs.pdf);
                 
             }
             Float<ad> weight2 = mis_weight<ad>(pdf0, scene.emitter_position_pdf<ad>(its.p, its1, active)); // MIS weight
@@ -179,7 +180,7 @@ std::pair<IntC, Spectrum<ad>> DirectIntegrator::eval_secondary_edge(const Scene 
     MaskC valid = bss.is_valid;
 
     // _p0 on a face edge, _p2 on an emitter
-    const Vector3fC &_p0    = detach(bss.p0);
+    const Vector3fC &_p0    = detach<false>(bss.p0);
     Vector3fC       _p2, _dir;
     _p2  = bss.p2;
     _dir = normalize(_p2 - _p0);
@@ -210,8 +211,8 @@ std::pair<IntC, Spectrum<ad>> DirectIntegrator::eval_secondary_edge(const Scene 
     if constexpr ( ad ) {
         camera_ray = sensor.sample_primary_ray(Vector2fD(sds.q));
         its1 = scene.ray_intersect<true, false>(camera_ray, valid);
-        valid &= detach(its1.is_valid() )&& norm(detach(its1.p) - _p1) < ShadowEpsilon;
-        valid &= detach(neq(its1.shape->bsdf(), nullptr));
+        valid &= detach<false>(its1.is_valid()) && norm(detach<false>(its1.p) - _p1) < ShadowEpsilon;
+        valid &= detach<false>(neq(its1.shape->bsdf(), nullptr));
     } else {
         camera_ray = sensor.sample_primary_ray(sds.q);
         its1 = scene.ray_intersect<false>(camera_ray, valid);
@@ -233,7 +234,7 @@ std::pair<IntC, Spectrum<ad>> DirectIntegrator::eval_secondary_edge(const Scene 
     SpectrumC bsdf_val;
     Vector3fC d0;
     if constexpr ( ad ) {
-        d0 = -detach(camera_ray.d);
+        d0 = -detach<false>(camera_ray.d);
     } else {
         d0 = -camera_ray.d;
     }
@@ -263,9 +264,9 @@ std::pair<IntC, Spectrum<ad>> DirectIntegrator::eval_secondary_edge(const Scene 
         RayD shadow_ray(its1.p, normalize(bss.p0 - its1.p));
         Vector2fD uv;
         std::tie(uv, std::ignore) = ray_intersect_triangle<true>(v0, e1, e2, shadow_ray);
-        Vector3fD u2 = bilinear<true>(detach(v0), detach(e1), detach(e2), uv);
-        SpectrumD result = (SpectrumD(value0)*dot(Vector3fD(n), u2)) & valid;
-        return { select(valid, sds.pixel_idx, -1), result - detach(result) };
+        Vector3fD u2 = bilinear<true>(detach<false>(v0), detach<false>(e1), detach<false>(e2), uv);
+        SpectrumD result = (SpectrumD(value0)*dot(Vector3fD(n), u2)) & MaskD(valid);
+        return { select(valid, sds.pixel_idx, -1), result - detach<false>(result) };
     } else {
         // returning the value without multiplying normal velocity for guiding
         return { -1, value0 };
@@ -285,13 +286,13 @@ void DirectIntegrator::render_secondary_edges(const Scene &scene, int sensor_id,
 
     auto [idx, value] = eval_secondary_edge<true>(scene, *scene.m_sensors[sensor_id], sample3);
     // masked(value, ~drjit::isfinite<SpectrumD>(value)) = 0.f;
-    masked(value, pdf0 > Epsilon) /= pdf0;
+    masked(value, MaskD(pdf0 > Epsilon)) /= pdf0;
     if ( likely(opts.sppse > 1) ) {
         value /= static_cast<float>(opts.sppse);
     }
 
     for (int j=0; j<3; ++j) {
-        scatter_reduce(ReduceOp::Add, result[j], value[j], IntD(idx), idx >= 0);
+        scatter_reduce(ReduceOp::Add, result[j], value[j], IntD(idx), MaskD(idx >= 0));
     }
 
 }

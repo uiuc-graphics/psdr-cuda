@@ -1,5 +1,8 @@
 #pragma once
 
+#include <drjit/map.h>
+#include <drjit/call.h>
+
 #ifdef _WIN32
 #	define likely(x)       (x)
 #	define unlikely(x)     (x)

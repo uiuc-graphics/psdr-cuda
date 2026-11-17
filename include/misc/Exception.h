@@ -10,8 +10,12 @@
         if( !(cond) )                                                          \
         {                                                                      \
             std::stringstream ss;                                              \
-            ss << __FILE__ << " (" << __LINE__ << "): " << #cond;              \
-            throw psdr_jit::Exception( ss.str().c_str() );                         \
+            std::operator<<(ss, __FILE__);                                     \
+            std::operator<<(ss, " (");                                         \
+            ss << __LINE__;                                                    \
+            std::operator<<(ss, "): ");                                        \
+            std::operator<<(ss, #cond);                                        \
+            throw psdr_jit::Exception( ss.str().c_str() );                     \
         }                                                                      \
     } while( 0 )
 
@@ -22,7 +26,10 @@
         if( !(cond) )                                                          \
         {                                                                      \
             std::stringstream ss;                                              \
-            ss << "\n  File \"" << __FILE__ << "\", line " << __LINE__;        \
+            std::operator<<(ss, "\n  File \"");                                \
+            std::operator<<(ss, __FILE__);                                     \
+            std::operator<<(ss, "\", line ");                                  \
+            ss << __LINE__;                                                    \
             throw psdr_jit::Exception( ( std::string(msg) + ss.str() ).c_str() );  \
         }                                                                      \
     } while( 0 )

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <psdr/psdr.h>
-#include <drjit/struct.h>
+#include <drjit/array_traverse.h>
 
 NAMESPACE_BEGIN(psdr_jit)
 

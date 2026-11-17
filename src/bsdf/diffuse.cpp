@@ -95,8 +95,8 @@ Float<ad> Diffuse::__pdf(const Intersection<ad> &_its, const Vector3f<ad> &_wo, 
 
     FloatC cos_theta_i, cos_theta_o;
     if constexpr ( ad ) {
-        cos_theta_i = FrameC::cos_theta(detach(its.wi));
-        cos_theta_o = FrameC::cos_theta(detach(wo));
+        cos_theta_i = FrameC::cos_theta(detach<false>(its.wi));
+        cos_theta_o = FrameC::cos_theta(detach<false>(wo));
     } else {
         cos_theta_i = FrameC::cos_theta(its.wi);
         cos_theta_o = FrameC::cos_theta(wo);

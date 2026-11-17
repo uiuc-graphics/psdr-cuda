@@ -60,7 +60,7 @@ Spectrum<ad> EnvironmentMap::eval_direction(const Vector3f<ad> &wi, Mask<ad> act
     if constexpr ( ad ) {
         v = transform_dir<FloatD>(m_from_world, wi);
     } else {
-        v = transform_dir<FloatC>(detach(m_from_world), wi);
+        v = transform_dir<FloatC>(detach<false>(m_from_world), wi);
     }
 
     Vector2f<ad> uv(atan2(v.x(), -v.z())*InvTwoPi, safe_acos(v.y())*InvPi);
@@ -68,7 +68,7 @@ Spectrum<ad> EnvironmentMap::eval_direction(const Vector3f<ad> &wi, Mask<ad> act
     if constexpr ( ad ) {
         return m_radiance.eval<true>(uv, false, true)*m_scale;
     } else {
-        return m_radiance.eval<false>(uv, false, true)*detach(m_scale);
+        return m_radiance.eval<false>(uv, false, true)*detach<false>(m_scale);
     }
 }
 
@@ -93,8 +93,8 @@ PositionSample<ad> EnvironmentMap::__sample_position(const Vector3f<ad> &ref_p, 
     Vector2fC sample2;
     FloatC pdf;
     if constexpr ( ad ) {
-        ray.o = detach(ref_p);
-        sample2 = detach(_sample2);
+        ray.o = detach<false>(ref_p);
+        sample2 = detach<false>(_sample2);
     } else {
         ray.o = ref_p;
         sample2 = _sample2;
@@ -124,7 +124,7 @@ std::pair<Vector3fC, FloatC> EnvironmentMap::sample_direction(Vector2fC &uv) con
     FloatC inv_sin_theta = safe_rsqrt(maximum(sqr(d.x()) + sqr(d.z()), sqr(Epsilon)));
     masked(pdf, pdf > Epsilon) *= inv_sin_theta*(.5f/sqr(Pi));
 
-    d = transform_dir<FloatC>(detach(m_to_world), d);
+    d = transform_dir<FloatC>(detach<false>(m_to_world), d);
     return { d, pdf };
 }
 
@@ -144,16 +144,16 @@ Float<ad> EnvironmentMap::__sample_position_pdf(const Vector3f<ad> &ref_p, const
     Vector3fC d;
     FloatC G, dist2;
     if constexpr ( ad ) {
-        d = detach(its.p) - detach(ref_p);
+        d = detach<false>(its.p) - detach<false>(ref_p);
         dist2 = squared_norm(d); d /= safe_sqrt(dist2);
-        G = abs(dot(d, detach(its.n)))/dist2;
+        G = abs(dot(d, detach<false>(its.n)))/dist2;
     } else {
         d = its.p - ref_p;
         dist2 = squared_norm(d); d /= safe_sqrt(dist2);
         G = abs(dot(d, its.n))/dist2;
     }
 
-    d = transform_dir<FloatC>(detach(m_from_world), d);
+    d = transform_dir<FloatC>(detach<false>(m_from_world), d);
     FloatC factor = G*safe_rsqrt(maximum(sqr(d.x()) + sqr(d.z()), sqr(Epsilon)))*(.5f/sqr(Pi));
     Vector2fC uv(atan2(d.x(), -d.z())*InvTwoPi, safe_acos(d.y())*InvPi);
     uv -= floor(uv);
@@ -164,7 +164,9 @@ Float<ad> EnvironmentMap::__sample_position_pdf(const Vector3f<ad> &ref_p, const
 
 std::string EnvironmentMap::to_string() const {
     std::ostringstream oss;
-    oss << "EnvironmentMap[sampling_weight = " << m_sampling_weight << "]";
+    std::operator<<(oss, "EnvironmentMap[sampling_weight = ");
+    oss << m_sampling_weight;
+    std::operator<<(oss, "]");
     return oss.str();
 }
 

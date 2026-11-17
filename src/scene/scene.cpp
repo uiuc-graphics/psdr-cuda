@@ -1,5 +1,6 @@
 #include <chrono>
 #include <misc/Exception.h>
+#include <drjit-core/jit.h>
 
 #include <psdr/core/ray.h>
 #include <psdr/core/intersection.h>
@@ -32,12 +33,12 @@ void build_param_map(Scene::ParamMap &param_map, const std::vector<T*> arr, cons
         const T *obj = arr[i];
 
         std::stringstream oss1;
-        oss1 << name << "[" << i << "]";
+        std::operator<<(oss1, name); std::operator<<(oss1, "["); oss1 << i; std::operator<<(oss1, "]");
         param_map.insert(Scene::ParamMap::value_type(oss1.str(), *obj));
 
         if ( obj->m_id != "" ) {
             std::stringstream oss2;
-            oss2 << name << "[id=" << obj->m_id << "]";
+            std::operator<<(oss2, name); std::operator<<(oss2, "[id="); std::operator<<(oss2, obj->m_id); std::operator<<(oss2, "]");
 
             bool is_new;
             std::tie(std::ignore, is_new) = param_map.insert(Scene::ParamMap::value_type(oss2.str(), *obj));
@@ -136,8 +137,8 @@ void Scene::add_normalmap_BSDF(NormalMap* bsdf, Microfacet* bsdf_micro, const ch
         m_bsdfs.push_back(bsdf_temp);
         Scene::ParamMap &param_map = m_param_map;
         std::stringstream oss1, oss2;
-        oss1 << "BSDF[" << m_bsdfs.size() - 1 << "]";
-        oss2 << "BSDF[id=" << bsdf_id << "]";
+        std::operator<<(oss1, "BSDF["); oss1 << m_bsdfs.size() - 1; std::operator<<(oss1, "]");
+        std::operator<<(oss2, "BSDF[id="); std::operator<<(oss2, bsdf_id); std::operator<<(oss2, "]");
         param_map.insert(Scene::ParamMap::value_type(oss1.str(), *bsdf_temp));
         bool is_new;
         std::tie(std::ignore, is_new) = param_map.insert(Scene::ParamMap::value_type(oss2.str(), *bsdf_temp));
@@ -156,8 +157,8 @@ void Scene::add_BSDF(BSDF* bsdf, const char *bsdf_id, bool twoSide) {
 
         Scene::ParamMap &param_map = m_param_map;
         std::stringstream oss1, oss2;
-        oss1 << "BSDF[" << m_bsdfs.size() - 1 << "]";
-        oss2 << "BSDF[id=" << bsdf_id << "]";
+        std::operator<<(oss1, "BSDF["); oss1 << m_bsdfs.size() - 1; std::operator<<(oss1, "]");
+        std::operator<<(oss2, "BSDF[id="); std::operator<<(oss2, bsdf_id); std::operator<<(oss2, "]");
         param_map.insert(Scene::ParamMap::value_type(oss1.str(), *bsdf_temp));
 
         bool is_new;
@@ -173,8 +174,8 @@ void Scene::add_BSDF(BSDF* bsdf, const char *bsdf_id, bool twoSide) {
 
         Scene::ParamMap &param_map = m_param_map;
         std::stringstream oss1, oss2;
-        oss1 << "BSDF[" << m_bsdfs.size() - 1 << "]";
-        oss2 << "BSDF[id=" << bsdf_id << "]";
+        std::operator<<(oss1, "BSDF["); oss1 << m_bsdfs.size() - 1; std::operator<<(oss1, "]");
+        std::operator<<(oss2, "BSDF[id="); std::operator<<(oss2, bsdf_id); std::operator<<(oss2, "]");
         param_map.insert(Scene::ParamMap::value_type(oss1.str(), *bsdf_temp));
 
         bool is_new;
@@ -190,8 +191,8 @@ void Scene::add_BSDF(BSDF* bsdf, const char *bsdf_id, bool twoSide) {
 
         Scene::ParamMap &param_map = m_param_map;
         std::stringstream oss1, oss2;
-        oss1 << "BSDF[" << m_bsdfs.size() - 1 << "]";
-        oss2 << "BSDF[id=" << bsdf_id << "]";
+        std::operator<<(oss1, "BSDF["); oss1 << m_bsdfs.size() - 1; std::operator<<(oss1, "]");
+        std::operator<<(oss2, "BSDF[id="); std::operator<<(oss2, bsdf_id); std::operator<<(oss2, "]");
         param_map.insert(Scene::ParamMap::value_type(oss1.str(), *bsdf_temp));
 
         bool is_new;
@@ -207,8 +208,8 @@ void Scene::add_BSDF(BSDF* bsdf, const char *bsdf_id, bool twoSide) {
 
         Scene::ParamMap &param_map = m_param_map;
         std::stringstream oss1, oss2;
-        oss1 << "BSDF[" << m_bsdfs.size() - 1 << "]";
-        oss2 << "BSDF[id=" << bsdf_id << "]";
+        std::operator<<(oss1, "BSDF["); oss1 << m_bsdfs.size() - 1; std::operator<<(oss1, "]");
+        std::operator<<(oss2, "BSDF[id="); std::operator<<(oss2, bsdf_id); std::operator<<(oss2, "]");
         param_map.insert(Scene::ParamMap::value_type(oss1.str(), *bsdf_temp));
 
         bool is_new;
@@ -233,8 +234,8 @@ void Scene::add_BSDF(BSDF* bsdf, const char *bsdf_id, bool twoSide) {
 
         Scene::ParamMap &param_map = m_param_map;
         std::stringstream oss1, oss2;
-        oss1 << "BSDF[" << m_bsdfs.size() - 1 << "]";
-        oss2 << "BSDF[id=" << bsdf_id << "]";
+        std::operator<<(oss1, "BSDF["); oss1 << m_bsdfs.size() - 1; std::operator<<(oss1, "]");
+        std::operator<<(oss2, "BSDF[id="); std::operator<<(oss2, bsdf_id); std::operator<<(oss2, "]");
         param_map.insert(Scene::ParamMap::value_type(oss1.str(), *bsdf_temp));
 
         bool is_new;
@@ -249,7 +250,7 @@ void Scene::add_BSDF(BSDF* bsdf, const char *bsdf_id, bool twoSide) {
 void Scene::add_Mesh(const char *fname, Matrix4fC transform, const char *bsdf_id, Emitter *emitter) {
     if ( m_opts.log_level > 0 ) std::cout << "add_Mesh: " << m_meshes.size() << std::endl;
     std::stringstream oss;
-    oss << "BSDF[id=" << bsdf_id << "]";
+    std::operator<<(oss, "BSDF[id="); std::operator<<(oss, bsdf_id); std::operator<<(oss, "]");
     auto bsdf_info = m_param_map.find(oss.str());
     PSDR_ASSERT_MSG(bsdf_info != m_param_map.end(), std::string("Unknown BSDF id: ") + bsdf_id);
 
@@ -281,11 +282,11 @@ void Scene::add_Mesh(const char *fname, Matrix4fC transform, const char *bsdf_id
 void Scene::add_Mesh(Mesh *mesh_, const char *bsdf_id, Emitter *emitter) {
     if ( m_opts.log_level > 0 ) std::cout << "add_Mesh: " << m_meshes.size() << std::endl;
     Mesh *mesh = new Mesh(*mesh_);
-    
+
     mesh->m_mesh_id = m_meshes.size();
 
     std::stringstream oss;
-    oss << "BSDF[id=" << bsdf_id << "]";
+    std::operator<<(oss, "BSDF[id="); std::operator<<(oss, bsdf_id); std::operator<<(oss, "]");
     auto bsdf_info = m_param_map.find(oss.str());
     PSDR_ASSERT_MSG(bsdf_info != m_param_map.end(), std::string("Unknown BSDF id: ") + bsdf_id);
     mesh->m_bsdf = dynamic_cast<const BSDF*>(&bsdf_info->second);
@@ -353,7 +354,7 @@ void Scene::configure(std::vector<int> active_sensor) {
 
 
     m_lower = full<Vector3fC>(std::numeric_limits<float>::max());
-    m_upper = full<Vector3fC>(std::numeric_limits<float>::min());
+    m_upper = full<Vector3fC>(std::numeric_limits<float>::lowest());
     for ( Mesh *mesh : m_meshes ) {
         mesh->configure();
         face_offset.push_back(face_offset.back() + mesh->m_num_faces);
@@ -364,8 +365,8 @@ void Scene::configure(std::vector<int> active_sensor) {
             edge_offset.push_back(edge_offset.back());
         }
         for ( int i = 0; i < 3; ++i ) {
-            m_lower[i] = minimum(m_lower[i], min(detach(mesh->m_vertex_positions[i])));
-            m_upper[i] = maximum(m_upper[i], max(detach(mesh->m_vertex_positions[i])));
+            m_lower[i] = minimum(m_lower[i], min(detach<false>(mesh->m_vertex_positions[i])));
+            m_upper[i] = maximum(m_upper[i], max(detach<false>(mesh->m_vertex_positions[i])));
         }
     }
 
@@ -384,8 +385,8 @@ void Scene::configure(std::vector<int> active_sensor) {
             m_sensors[sensor_id]->m_edge_distrb.init(FloatC(1));
             for ( int i = 0; i < 3; ++i ) {
                 if ( PerspectiveCamera *camera = dynamic_cast<PerspectiveCamera *>(m_sensors[sensor_id]) ) {
-                    m_lower[i] = minimum(m_lower[i], detach(camera->m_camera_pos[i]));
-                    m_upper[i] = maximum(m_upper[i], detach(camera->m_camera_pos[i]));
+                    m_lower[i] = minimum(m_lower[i], detach<false>(camera->m_camera_pos[i]));
+                    m_upper[i] = maximum(m_upper[i], detach<false>(camera->m_camera_pos[i]));
                 }
             }
         }
@@ -408,8 +409,8 @@ void Scene::configure(std::vector<int> active_sensor) {
 
             for ( int i = 0; i < 3; ++i ) {
                 if ( PerspectiveCamera *camera = dynamic_cast<PerspectiveCamera *>(sensor) ) {
-                    m_lower[i] = minimum(m_lower[i], detach(camera->m_camera_pos[i]));
-                    m_upper[i] = maximum(m_upper[i], detach(camera->m_camera_pos[i]));
+                    m_lower[i] = minimum(m_lower[i], detach<false>(camera->m_camera_pos[i]));
+                    m_upper[i] = maximum(m_upper[i], detach<false>(camera->m_camera_pos[i]));
                 }
             }
         }
@@ -418,14 +419,15 @@ void Scene::configure(std::vector<int> active_sensor) {
 
     if ( m_opts.log_level > 0 ) {
         std::stringstream oss;
-        oss << "AABB: [lower = " << m_lower << ", upper = " << m_upper << "]";
+        oss << "AABB: [lower = " << drjit::string(m_lower).c_str()
+            << ", upper = " << drjit::string(m_upper).c_str() << "]";
         log(oss.str().c_str());
 
         if ( m_opts.sppe > 0 ) {
             std::stringstream oss;
-            oss << "(" << num_edges[0];
-            for ( size_t i = 1; i < num_edges.size(); ++i ) oss << ", " << num_edges[i];
-            oss << ") primary edges initialized.";
+            std::operator<<(oss, "("); oss << num_edges[0];
+            for ( size_t i = 1; i < num_edges.size(); ++i ) { std::operator<<(oss, ", "); oss << num_edges[i]; }
+            std::operator<<(oss, ") primary edges initialized.");
             log(oss.str().c_str());
         }
     }
@@ -499,7 +501,7 @@ void Scene::configure(std::vector<int> active_sensor) {
         // std::cout << total_weight << std::endl;
         for ( Emitter *e : m_emitters ) {
             if (EnvironmentMap *enve = dynamic_cast<EnvironmentMap *>(e)) {
-                e->m_sampling_weight = total_weight;
+                e->m_sampling_weight = total_weight > 0.0 ? total_weight : 1.0;
             }
         }
 
@@ -517,6 +519,13 @@ void Scene::configure(std::vector<int> active_sensor) {
 
     // PSDR_ASSERT(0);
 
+
+    // Register every configured scene object, including newly added objects.
+    // Destruction unregisters each object without affecting other live scenes.
+    for (auto *object : m_meshes) object->register_instance();
+    for (auto *object : m_bsdfs) object->register_instance();
+    for (auto *object : m_emitters) object->register_instance();
+    for (auto *object : m_sensors) object->register_instance();
 
     // Initialize CUDA arrays
     if ( !m_emitters.empty() ) {
@@ -556,7 +565,7 @@ void Scene::configure(std::vector<int> active_sensor) {
             }
         }
         drjit::eval(m_sec_edge_info);
-        FloatC edge_pmf = norm(detach(m_sec_edge_info.e1));
+        FloatC edge_pmf = norm(detach<false>(m_sec_edge_info.e1));
         drjit::eval(edge_pmf);
 
         // std::cout << edge_pmf << std::endl;
@@ -594,7 +603,7 @@ void Scene::configure(std::vector<int> active_sensor) {
     auto end_time = high_resolution_clock::now();
     if ( m_opts.log_level > 0 ) {
         std::stringstream oss;
-        oss << "Configured in " << duration_cast<duration<double>>(end_time - start_time).count() << " seconds.";
+        std::operator<<(oss, "Configured in "); oss << duration_cast<duration<double>>(end_time - start_time).count(); std::operator<<(oss, " seconds.");
         log(oss.str().c_str());
     }
     // PSDR_ASSERT(0);
@@ -677,37 +686,39 @@ Intersection<ad> Scene::ray_intersect(const Ray<ad> &ray, Mask<ad> active, Trian
         if ( out_info != nullptr ) *out_info = tri_info;
 
         if constexpr ( path_space ) {
-            its.J = tri_info.face_area/detach(tri_info.face_area);
+            its.J = tri_info.face_area/detach<false>(tri_info.face_area);
         } else {
             its.J = 1.f;
         }
 
     } else {
-        its.n = gather<Vector3f<ad>>(detach(m_triangle_info.face_normal), idx[1], active);
-        tri_uv_info = gather<TriangleUVC>(detach(m_triangle_uv), idx[1], active);
-        face_normal_mask = gather<MaskC>(detach(m_triangle_face_normals), idx[1], active);
+        its.n = gather<Vector3f<ad>>(detach<false>(m_triangle_info.face_normal), idx[1], active);
+        tri_uv_info = gather<TriangleUVC>(detach<false>(m_triangle_uv), idx[1], active);
+        face_normal_mask = gather<MaskC>(detach<false>(m_triangle_face_normals), idx[1], active);
 
-        tri_info_p0 = gather<Vector3f<ad>>(detach(m_triangle_info.p0), idx[1], active);
-        tri_info_e1 = gather<Vector3f<ad>>(detach(m_triangle_info.e1), idx[1], active);
-        tri_info_e2 = gather<Vector3f<ad>>(detach(m_triangle_info.e2), idx[1], active);
-        tri_info_n0 = gather<Vector3f<ad>>(detach(m_triangle_info.n0), idx[1], active);
-        tri_info_n1 = gather<Vector3f<ad>>(detach(m_triangle_info.n1), idx[1], active);
-        tri_info_n2 = gather<Vector3f<ad>>(detach(m_triangle_info.n2), idx[1], active);
-        tri_info_face_normal = gather<Vector3f<ad>>(detach(m_triangle_info.face_normal), idx[1], active);
-        tri_info_face_area = gather<Float<ad>>(detach(m_triangle_info.face_area), idx[1], active);
+        tri_info_p0 = gather<Vector3f<ad>>(detach<false>(m_triangle_info.p0), idx[1], active);
+        tri_info_e1 = gather<Vector3f<ad>>(detach<false>(m_triangle_info.e1), idx[1], active);
+        tri_info_e2 = gather<Vector3f<ad>>(detach<false>(m_triangle_info.e2), idx[1], active);
+        tri_info_n0 = gather<Vector3f<ad>>(detach<false>(m_triangle_info.n0), idx[1], active);
+        tri_info_n1 = gather<Vector3f<ad>>(detach<false>(m_triangle_info.n1), idx[1], active);
+        tri_info_n2 = gather<Vector3f<ad>>(detach<false>(m_triangle_info.n2), idx[1], active);
+        tri_info_face_normal = gather<Vector3f<ad>>(detach<false>(m_triangle_info.face_normal), idx[1], active);
+        tri_info_face_area = gather<Float<ad>>(detach<false>(m_triangle_info.face_area), idx[1], active);
 
-        tri_info_face_indices = gather<Vector3i<ad>>(detach(m_triangle_info.face_indices), idx[1], active);
+        tri_info_face_indices = gather<Vector3i<ad>>(detach<false>(m_triangle_info.face_indices), idx[1], active);
 
         TriangleInfoD   tri_info = empty<TriangleInfoD>(slices<Vector3fC>(tri_info_p0));
-        tri_info.p0 = gather<Vector3fD>((m_triangle_info.p0), idx[1], active);;
-        tri_info.e1 = gather<Vector3fD>((m_triangle_info.e1), idx[1], active);
-        tri_info.e2 = gather<Vector3fD>((m_triangle_info.e2), idx[1], active);
-        tri_info.n0 = gather<Vector3fD>((m_triangle_info.n0), idx[1], active);
-        tri_info.n1 = gather<Vector3fD>((m_triangle_info.n1), idx[1], active);
-        tri_info.n2 = gather<Vector3fD>((m_triangle_info.n2), idx[1], active);
-        tri_info.face_normal = gather<Vector3fD>(m_triangle_info.face_normal, idx[1], active);
-        tri_info.face_area = gather<FloatD>(m_triangle_info.face_area, IntD(idx[1]), active);
-        tri_info.face_indices = gather<Vector3iD>(m_triangle_info.face_indices, idx[1], active);
+        IntD idx_d(idx[1]);
+        MaskD active_d(active);
+        tri_info.p0 = gather<Vector3fD>((m_triangle_info.p0), idx_d, active_d);
+        tri_info.e1 = gather<Vector3fD>((m_triangle_info.e1), idx_d, active_d);
+        tri_info.e2 = gather<Vector3fD>((m_triangle_info.e2), idx_d, active_d);
+        tri_info.n0 = gather<Vector3fD>((m_triangle_info.n0), idx_d, active_d);
+        tri_info.n1 = gather<Vector3fD>((m_triangle_info.n1), idx_d, active_d);
+        tri_info.n2 = gather<Vector3fD>((m_triangle_info.n2), idx_d, active_d);
+        tri_info.face_normal = gather<Vector3fD>(m_triangle_info.face_normal, idx_d, active_d);
+        tri_info.face_area = gather<FloatD>(m_triangle_info.face_area, idx_d, active_d);
+        tri_info.face_indices = gather<Vector3iD>(m_triangle_info.face_indices, idx_d, active_d);
 
 
         if ( out_info != nullptr ) {
@@ -745,7 +756,7 @@ Intersection<ad> Scene::ray_intersect(const Ray<ad> &ray, Mask<ad> active, Trian
         if constexpr ( ad ) {
             its.shape = gather<MeshArrayD>(m_meshes_cuda, idx[0], active);
         } else {
-            its.shape = gather<MeshArrayC>(detach(m_meshes_cuda), idx[0], active);
+            its.shape = gather<MeshArrayC>(detach<false>(m_meshes_cuda), idx[0], active);
         }
         its.p = bilinear<ad>(vertex0, edge1, edge2, uv);
 
@@ -860,37 +871,39 @@ Intersection<ad> Scene::unit_ray_intersect(const Ray<ad> &ray, Mask<ad> active) 
         tri_info.face_indices = tri_info_face_indices;
 
         if constexpr ( path_space ) {
-            its.J = tri_info.face_area/detach(tri_info.face_area);
+            its.J = tri_info.face_area/detach<false>(tri_info.face_area);
         } else {
             its.J = 1.f;
         }
 
     } else {
-        its.n = gather<Vector3f<ad>>(detach(m_triangle_info.face_normal), idx[1], active);
-        tri_uv_info = gather<TriangleUVC>(detach(m_triangle_uv), idx[1], active);
-        face_normal_mask = gather<MaskC>(detach(m_triangle_face_normals), idx[1], active);
+        its.n = gather<Vector3f<ad>>(detach<false>(m_triangle_info.face_normal), idx[1], active);
+        tri_uv_info = gather<TriangleUVC>(detach<false>(m_triangle_uv), idx[1], active);
+        face_normal_mask = gather<MaskC>(detach<false>(m_triangle_face_normals), idx[1], active);
 
-        tri_info_p0 = gather<Vector3f<ad>>(detach(m_triangle_info.p0), idx[1], active);
-        tri_info_e1 = gather<Vector3f<ad>>(detach(m_triangle_info.e1), idx[1], active);
-        tri_info_e2 = gather<Vector3f<ad>>(detach(m_triangle_info.e2), idx[1], active);
-        tri_info_n0 = gather<Vector3f<ad>>(detach(m_triangle_info.n0), idx[1], active);
-        tri_info_n1 = gather<Vector3f<ad>>(detach(m_triangle_info.n1), idx[1], active);
-        tri_info_n2 = gather<Vector3f<ad>>(detach(m_triangle_info.n2), idx[1], active);
-        tri_info_face_normal = gather<Vector3f<ad>>(detach(m_triangle_info.face_normal), idx[1], active);
-        tri_info_face_area = gather<Float<ad>>(detach(m_triangle_info.face_area), idx[1], active);
-        tri_info_face_indices = gather<Vector3i<ad>>(detach(m_triangle_info.face_indices), idx[1], active);
+        tri_info_p0 = gather<Vector3f<ad>>(detach<false>(m_triangle_info.p0), idx[1], active);
+        tri_info_e1 = gather<Vector3f<ad>>(detach<false>(m_triangle_info.e1), idx[1], active);
+        tri_info_e2 = gather<Vector3f<ad>>(detach<false>(m_triangle_info.e2), idx[1], active);
+        tri_info_n0 = gather<Vector3f<ad>>(detach<false>(m_triangle_info.n0), idx[1], active);
+        tri_info_n1 = gather<Vector3f<ad>>(detach<false>(m_triangle_info.n1), idx[1], active);
+        tri_info_n2 = gather<Vector3f<ad>>(detach<false>(m_triangle_info.n2), idx[1], active);
+        tri_info_face_normal = gather<Vector3f<ad>>(detach<false>(m_triangle_info.face_normal), idx[1], active);
+        tri_info_face_area = gather<Float<ad>>(detach<false>(m_triangle_info.face_area), idx[1], active);
+        tri_info_face_indices = gather<Vector3i<ad>>(detach<false>(m_triangle_info.face_indices), idx[1], active);
 
 
         TriangleInfoD   tri_info = empty<TriangleInfoD>(slices<Vector3fC>(tri_info_p0));
-        tri_info.p0 = gather<Vector3fD>((m_triangle_info.p0), idx[1], active);;
-        tri_info.e1 = gather<Vector3fD>((m_triangle_info.e1), idx[1], active);
-        tri_info.e2 = gather<Vector3fD>((m_triangle_info.e2), idx[1], active);
-        tri_info.n0 = gather<Vector3fD>((m_triangle_info.n0), idx[1], active);
-        tri_info.n1 = gather<Vector3fD>((m_triangle_info.n1), idx[1], active);
-        tri_info.n2 = gather<Vector3fD>((m_triangle_info.n2), idx[1], active);
-        tri_info.face_normal = gather<Vector3fD>(m_triangle_info.face_normal, idx[1], active);
-        tri_info.face_area = gather<FloatD>(m_triangle_info.face_area, IntD(idx[1]), active);
-        tri_info.face_indices = gather<Vector3iD>(m_triangle_info.face_indices, IntD(idx[1]), active);
+        IntD idx_d2(idx[1]);
+        MaskD active_d2(active);
+        tri_info.p0 = gather<Vector3fD>((m_triangle_info.p0), idx_d2, active_d2);
+        tri_info.e1 = gather<Vector3fD>((m_triangle_info.e1), idx_d2, active_d2);
+        tri_info.e2 = gather<Vector3fD>((m_triangle_info.e2), idx_d2, active_d2);
+        tri_info.n0 = gather<Vector3fD>((m_triangle_info.n0), idx_d2, active_d2);
+        tri_info.n1 = gather<Vector3fD>((m_triangle_info.n1), idx_d2, active_d2);
+        tri_info.n2 = gather<Vector3fD>((m_triangle_info.n2), idx_d2, active_d2);
+        tri_info.face_normal = gather<Vector3fD>(m_triangle_info.face_normal, idx_d2, active_d2);
+        tri_info.face_area = gather<FloatD>(m_triangle_info.face_area, idx_d2, active_d2);
+        tri_info.face_indices = gather<Vector3iD>(m_triangle_info.face_indices, idx_d2, active_d2);
 
         its.J = 1.f;
 
@@ -923,7 +936,7 @@ Intersection<ad> Scene::unit_ray_intersect(const Ray<ad> &ray, Mask<ad> active) 
         if constexpr ( ad ) {
             its.shape = gather<MeshArrayD>(m_meshes_cuda, idx[0], active);
         } else {
-            its.shape = gather<MeshArrayC>(detach(m_meshes_cuda), idx[0], active);
+            its.shape = gather<MeshArrayC>(detach<false>(m_meshes_cuda), idx[0], active);
         }
         its.p = bilinear<ad>(vertex0, edge1, edge2, uv);
 
@@ -1000,7 +1013,7 @@ PositionSample<ad> Scene::sample_emitter_position(const Vector3f<ad> &ref_p, con
             emitter_arr = gather<EmitterArrayD>(m_emitters_cuda, IntD(emitter_index), active);
             result = emitter_arr->sample_positionD(ref_p, sample2, active);
         } else {
-            emitter_arr = gather<EmitterArrayC>(detach(m_emitters_cuda), emitter_index, active);
+            emitter_arr = gather<EmitterArrayC>(detach<false>(m_emitters_cuda), emitter_index, active);
             result = emitter_arr->sample_positionC(ref_p, sample2, active);
         }
         result.pdf *= emitter_pdf;
@@ -1041,10 +1054,10 @@ BoundarySegSampleDirect Scene::sample_boundary_segment_direct(const Vector3fC &s
 
 
     result.p0 = fmadd(info_e1, sample1, info_p0); // p0 = info.p0 + info.e1*sample1;
-    result.edge = normalize(detach(info_e1));
-    result.edge2 = detach(info_p2) - detach(info_p0);
-    const Vector3fC &p0 = detach(result.p0);
-    pdf0 /= norm(detach(info_e1));
+    result.edge = normalize(detach<false>(info_e1));
+    result.edge2 = detach<false>(info_p2) - detach<false>(info_p0);
+    const Vector3fC &p0 = detach<false>(result.p0);
+    pdf0 /= norm(detach<false>(info_e1));
 
     // Sample a point ps2 on a emitter
     PositionSampleC ps2 = sample_emitter_position<false>(p0, tail<2>(sample3), active);
@@ -1057,10 +1070,10 @@ BoundarySegSampleDirect Scene::sample_boundary_segment_direct(const Vector3fC &s
     e /= safe_sqrt(distSqr);
     const FloatC cosTheta = dot(result.n, -e);
 
-    IntC sgn0 = sign<false>(dot(detach(info_n0), e), EdgeEpsilon),
-         sgn1 = sign<false>(dot(detach(info_n1), e), EdgeEpsilon);
+    IntC sgn0 = sign<false>(dot(detach<false>(info_n0), e), EdgeEpsilon),
+         sgn1 = sign<false>(dot(detach<false>(info_n1), e), EdgeEpsilon);
     result.is_valid = active && (cosTheta > Epsilon) && (
-        (detach(info_is_boundary) && neq(sgn0, 0)) || (~detach(info_is_boundary) && (sgn0*sgn1 < 0))
+        (detach<false>(info_is_boundary) && neq(sgn0, 0)) || (~detach<false>(info_is_boundary) && (sgn0*sgn1 < 0))
     );
 
     result.pdf = (pdf0*ps2.pdf*(distSqr/cosTheta)) & result.is_valid;

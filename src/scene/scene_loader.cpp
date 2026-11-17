@@ -191,12 +191,12 @@ void build_param_map(Scene::ParamMap &param_map, const std::vector<T*> arr, cons
         const T *obj = arr[i];
 
         std::stringstream oss1;
-        oss1 << name << "[" << i << "]";
+        std::operator<<(oss1, name); std::operator<<(oss1, "["); oss1 << i; std::operator<<(oss1, "]");
         param_map.insert(Scene::ParamMap::value_type(oss1.str(), *obj));
 
         if ( obj->m_id != "" ) {
             std::stringstream oss2;
-            oss2 << name << "[id=" << obj->m_id << "]";
+            std::operator<<(oss2, name); std::operator<<(oss2, "[id="); std::operator<<(oss2, obj->m_id); std::operator<<(oss2, "]");
 
             bool is_new;
             std::tie(std::ignore, is_new) = param_map.insert(Scene::ParamMap::value_type(oss2.str(), *obj));
@@ -440,8 +440,8 @@ void SceneLoader::load_bsdf(const pugi::xml_node &node, Scene &scene) {
     Scene::ParamMap &param_map = scene.m_param_map;
 
     std::stringstream oss1, oss2;
-    oss1 << "BSDF[" << scene.m_bsdfs.size() - 1 << "]";
-    oss2 << "BSDF[id=" << bsdf_id << "]";
+    std::operator<<(oss1, "BSDF["); oss1 << scene.m_bsdfs.size() - 1; std::operator<<(oss1, "]");
+    std::operator<<(oss2, "BSDF[id="); std::operator<<(oss2, bsdf_id); std::operator<<(oss2, "]");
     param_map.insert(Scene::ParamMap::value_type(oss1.str(), *bsdf));
 
     bool is_new;
@@ -475,7 +475,7 @@ void SceneLoader::load_shape(const pugi::xml_node &node, Scene &scene, int shape
     PSDR_ASSERT(bsdf_id);
 
     std::stringstream oss;
-    oss << "BSDF[id=" << bsdf_id << "]";
+    std::operator<<(oss, "BSDF[id="); std::operator<<(oss, bsdf_id); std::operator<<(oss, "]");
     auto bsdf_info = scene.m_param_map.find(oss.str());
     PSDR_ASSERT_MSG(bsdf_info != scene.m_param_map.end(), std::string("Unknown BSDF id: ") + bsdf_id);
     mesh->m_bsdf = dynamic_cast<const BSDF*>(&bsdf_info->second);

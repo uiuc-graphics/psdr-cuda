@@ -1,6 +1,6 @@
 #pragma once
 
-#include <drjit/struct.h>
+#include <drjit/array_traverse.h>
 #include "ray.h"
 #include "intersection.h"
 

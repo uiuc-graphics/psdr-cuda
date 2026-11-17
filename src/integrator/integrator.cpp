@@ -16,23 +16,25 @@ SpectrumC Integrator::renderC(const Scene &scene, int sensor_id, int seed, IntC 
     const RenderOption &opts = scene.m_opts;
     int64_t sample_count = static_cast<int64_t>(opts.height)*opts.width*opts.spp;
 
-    if (pix_id != -1 && seed == -1) {
+    if (any(pix_id != -1) && seed == -1) {
         PSDR_ASSERT_MSG(false, "While using batch rendering, seed must be set!");
     }
 
     if (seed != -1) {
         auto seeds = arange<UInt64C>(sample_count) + seed;
-        if (pix_id == -1) {
+        if (all(pix_id == -1)) {
             scene.m_samplers[0].seed(seeds);
         } else {
-            scene.m_samplers[0].seed(gather<UInt64C>(seeds, repeat(pix_id, opts.spp)));
+            UInt64C indices = repeat(UInt64C(pix_id), opts.spp) * opts.spp
+                + arange<UInt64C>(pix_id.size() * opts.spp) % opts.spp;
+            scene.m_samplers[0].seed_indices(indices + seed, indices);
         }
     }
 
-    
+
     const int num_pixels = opts.width*opts.height;
     SpectrumC result;
-    if (pix_id == -1) {
+    if (all(pix_id == -1)) {
         result = __render<false>(scene, sensor_id);
     } else {
         result = __render_batch<false>(scene, sensor_id, pix_id);
@@ -40,7 +42,9 @@ SpectrumC Integrator::renderC(const Scene &scene, int sensor_id, int seed, IntC 
     auto end_time = high_resolution_clock::now();
     if ( opts.log_level ) {
         std::stringstream oss;
-        oss << "Rendered in " << duration_cast<duration<double>>(end_time - start_time).count() << " seconds.";
+        std::operator<<(oss, "Rendered in ");
+        oss << duration_cast<duration<double>>(end_time - start_time).count();
+        std::operator<<(oss, " seconds.");
         log(oss.str().c_str());
     }
     drjit::eval(result);
@@ -49,7 +53,7 @@ SpectrumC Integrator::renderC(const Scene &scene, int sensor_id, int seed, IntC 
 
 
 SpectrumD Integrator::renderD(const Scene &scene, int sensor_id, int seed, IntD pix_id) const {
-    if (pix_id != -1 && seed == -1) {
+    if (any(pix_id != -1) && seed == -1) {
         PSDR_ASSERT_MSG(false, "While using batch rendering, seed must be set!");
     }
     using namespace std::chrono;
@@ -59,10 +63,12 @@ SpectrumD Integrator::renderD(const Scene &scene, int sensor_id, int seed, IntD 
     int64_t num_pixels = static_cast<int64_t>(opts.height)*opts.width;
     if (opts.spp > 0 && seed != -1) {
         auto seeds = arange<UInt64C>(num_pixels * opts.spp) + seed;
-        if (pix_id == -1) {
+        if (all(pix_id == -1)) {
             scene.m_samplers[0].seed(seeds);
         } else {
-            scene.m_samplers[0].seed(gather<UInt64C>(seeds, repeat(pix_id, opts.spp)));
+            UInt64C indices = repeat(UInt64C(detach<false>(pix_id)), opts.spp) * opts.spp
+                + arange<UInt64C>(pix_id.size() * opts.spp) % opts.spp;
+            scene.m_samplers[0].seed_indices(indices + seed, indices);
         }
     }
     if (opts.sppe > 0 && seed != -1) {
@@ -74,25 +80,33 @@ SpectrumD Integrator::renderD(const Scene &scene, int sensor_id, int seed, IntD 
 
     // Interior integral
     SpectrumD result;
-    if (pix_id == -1) {
+    if (all(pix_id == -1)) {
         result = __render<true>(scene, sensor_id);
     } else {
         result = __render_batch<true>(scene, sensor_id, pix_id);
     }
 
-    // Boundary integral
+    // Edge samplers use full-image pixel indices, including during a batch.
+    // Accumulate into a full-sized buffer before gathering requested pixels.
+    const bool batch = any(pix_id != -1);
+    SpectrumD edges = zeros<SpectrumD>(num_pixels);
+    SpectrumD &edge_target = batch ? edges : result;
     if ( likely(scene.m_opts.sppe > 0) ) {
-        render_primary_edges(scene, sensor_id, result);
+        render_primary_edges(scene, sensor_id, edge_target);
     }
 
     if ( likely(scene.m_opts.sppse > 0) ) {
-        render_secondary_edges(scene, sensor_id, result);
+        render_secondary_edges(scene, sensor_id, edge_target);
     }
+    if (batch)
+        result += gather<SpectrumD>(edges, pix_id);
     
     auto end_time = high_resolution_clock::now();
     if ( scene.m_opts.log_level ) {
         std::stringstream oss;
-        oss << "Rendered in " << duration_cast<duration<double>>(end_time - start_time).count() << " seconds.";
+        std::operator<<(oss, "Rendered in ");
+        oss << duration_cast<duration<double>>(end_time - start_time).count();
+        std::operator<<(oss, " seconds.");
         log(oss.str().c_str());
     }
     drjit::eval(result);
@@ -182,17 +196,17 @@ void Integrator::render_primary_edges(const Scene &scene, int sensor_id, Spectru
     if ( sensor->m_enable_edges ) {
         PrimaryEdgeSample edge_samples = sensor->sample_primary_edge(scene.m_samplers[1].next_1d<false>());
         MaskC valid = (edge_samples.idx >= 0);
-        SpectrumC delta_L = Li(scene, scene.m_samplers[1], edge_samples.ray_n, valid) - 
+        SpectrumC delta_L = Li(scene, scene.m_samplers[1], edge_samples.ray_n, valid) -
                             Li(scene, scene.m_samplers[1], edge_samples.ray_p, valid);
         SpectrumD value = edge_samples.x_dot_n*SpectrumD(delta_L/edge_samples.pdf);
         masked(value, ~drjit::isfinite<SpectrumD>(value)) = 0.f;
         if ( likely(opts.sppe > 1) ) {
             value /= static_cast<float>(opts.sppe);
         }
-        value -= detach(value);
+        value -= detach<false>(value);
 
         for (int j=0; j<3; ++j) {
-            scatter_reduce(ReduceOp::Add, result[j], value[j], IntD(edge_samples.idx), valid);
+            scatter_reduce(ReduceOp::Add, result[j], value[j], IntD(edge_samples.idx), MaskD(valid));
         }
     }
 }

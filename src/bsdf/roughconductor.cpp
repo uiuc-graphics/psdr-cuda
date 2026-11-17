@@ -86,8 +86,7 @@ Float<ad> RoughConductor::__pdf(const Intersection<ad>& _its, const Vector3f<ad>
     GGXDistribution distr(alpha_u, alpha_v);
     Float<ad> result = distr.eval<ad>(m) * distr.smith_g1<ad>(its.wi, m) /
                        (4.f * cos_theta_i);
-    result = detach(result);   
-    return result;
+    return detach(result);
 }
 
 

@@ -20,6 +20,8 @@ struct SensorDirectSample_ : public SampleRecord_<Float_> {
 
 PSDR_CLASS_DECL_BEGIN(Sensor,, Object)
 public:
+    Sensor() : Object("Sensor") {}
+    static constexpr const char *Domain = "Sensor";
     virtual ~Sensor() override {}
 
     virtual void configure(bool cache);
@@ -66,7 +68,7 @@ PSDR_CLASS_DECL_END(Sensor)
 
 NAMESPACE_END(psdr_jit)
 
-DRJIT_VCALL_BEGIN(psdr_jit::Sensor)
-    DRJIT_VCALL_METHOD(sample_primary_ray)
-    DRJIT_VCALL_METHOD(sample_primary_edge)
-DRJIT_VCALL_END(psdr_jit::Sensor)
+DRJIT_CALL_BEGIN(psdr_jit::Sensor)
+    DRJIT_CALL_METHOD(sample_primary_ray)
+    DRJIT_CALL_METHOD(sample_primary_edge)
+DRJIT_CALL_END()

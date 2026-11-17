@@ -1,11 +1,12 @@
-#include <psdr/psdr.h>
-#include <psdr/core/bitmap_loader.h>
-#include <misc/Exception.h>
-
+// Include tinyexr BEFORE psdr headers to avoid drjit operator conflicts
 #define TINYEXR_USE_MINIZ 0
 #include <psdr/core/miniz.h>
 #define TINYEXR_IMPLEMENTATION
 #include <psdr/core/tinyexr.h>
+
+#include <psdr/psdr.h>
+#include <psdr/core/bitmap_loader.h>
+#include <misc/Exception.h>
 
 NAMESPACE_BEGIN(psdr_jit)
 

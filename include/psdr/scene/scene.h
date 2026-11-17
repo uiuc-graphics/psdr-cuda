@@ -53,7 +53,7 @@ public:
 
     // std::string to_string() const override;
 
-    int                     m_num_sensors;
+    int                     m_num_sensors = 0;
     std::vector<Sensor*>    m_sensors;
 
     std::vector<Emitter*>   m_emitters;
@@ -63,7 +63,7 @@ public:
 
     std::vector<BSDF*>      m_bsdfs;
 
-    int                     m_num_meshes;
+    int                     m_num_meshes = 0;
     std::vector<Mesh*>      m_meshes;
     MeshArrayD              m_meshes_cuda;
 

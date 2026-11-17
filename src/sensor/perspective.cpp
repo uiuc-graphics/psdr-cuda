@@ -80,8 +80,8 @@ void PerspectiveCamera::configure(bool cache=true) {
                     // std::cout << mesh->m_edge_indices[3] << std::endl;
                     // std::cout << fuv1_d << std::endl;
                     // std::cout << fuv2_d << std::endl;
-                    Vector3iC fuv1 = detach(fuv1_d);
-                    Vector3iC fuv2 = detach(fuv2_d);
+                    Vector3iC fuv1 = detach<false>(fuv1_d);
+                    Vector3iC fuv2 = detach<false>(fuv2_d);
 
                     IntC uv_cut = zeros<IntC>(slices(valid));
 
@@ -136,14 +136,14 @@ void PerspectiveCamera::configure(bool cache=true) {
                     scatter(m_edge_info.p0, head<2>(q0), idx);
                     scatter(m_edge_info.p1, head<2>(q1), idx);
 
-                    Vector2fD e = head<2>(detach(q1) - detach(q0));
+                    Vector2fD e = head<2>(detach<false>(q1) - detach<false>(q0));
                     FloatD len = norm(e);
                     e /= len;
                     scatter(m_edge_info.edge_normal, Vector2fD(-e.y(), e.x()), idx);
                     scatter(m_edge_info.edge_length, len, idx);
                 }
             }
-            m_edge_distrb.init(detach(m_edge_info.edge_length));
+            m_edge_distrb.init(detach<false>(m_edge_info.edge_length));
             m_enable_edges = true;
         } else {
             m_enable_edges = false;
@@ -158,9 +158,9 @@ std::string PerspectiveCamera::to_string() const {
 
 
 RayC PerspectiveCamera::sample_primary_ray(const Vector2fC &samples) const {
-    Vector3fC d = normalize(transform_pos<FloatC>(detach(m_sample_to_camera), concat(samples, Vectorf<1, false>(0.f))));
+    Vector3fC d = normalize(transform_pos<FloatC>(detach<false>(m_sample_to_camera), concat(samples, Vectorf<1, false>(0.f))));
     Matrix4fD m_to_world = m_to_world_left * m_to_world_raw * m_to_world_right;
-    Matrix4fC to_world = detach(m_to_world);
+    Matrix4fC to_world = detach<false>(m_to_world);
     return RayC(
         transform_pos<FloatC>(to_world, zeros<Vector3fC>(slices(samples))),
         transform_dir<FloatC>(to_world, d)
@@ -169,7 +169,7 @@ RayC PerspectiveCamera::sample_primary_ray(const Vector2fC &samples) const {
 
 
 RayD PerspectiveCamera::sample_primary_ray(const Vector2fD &samples) const {
-    Vector3fD d = detach(normalize(transform_pos<FloatD>(m_sample_to_camera, concat(samples, Vectorf<1, false>(0.f)))));
+    Vector3fD d = detach<false>(normalize(transform_pos<FloatD>(m_sample_to_camera, concat(samples, Vectorf<1, false>(0.f)))));
     Matrix4fD m_to_world = m_to_world_left * m_to_world_raw * m_to_world_right;
     return RayD(
         transform_pos<FloatD>(m_to_world, zeros<Vector3fD>(slices(samples))),
@@ -180,19 +180,19 @@ RayD PerspectiveCamera::sample_primary_ray(const Vector2fD &samples) const {
 
 SensorDirectSampleC PerspectiveCamera::sample_direct(const Vector3fC &p) const {
     SensorDirectSampleC result;
-    result.q = head<2>(transform_pos<FloatC>(detach(m_world_to_sample), p));
+    result.q = head<2>(transform_pos<FloatC>(detach<false>(m_world_to_sample), p));
 
     Vector2iC iq = floor2int<Vector2iC, Vector2fC>(result.q*m_resolution);
     result.is_valid = iq.x() >= 0 && iq.x() < m_resolution.x() &&
                       iq.y() >= 0 && iq.y() < m_resolution.y();
     result.pixel_idx = select(result.is_valid, iq.y()*m_resolution.x() + iq.x(), -1);
 
-    Vector3fC dir = p - detach(m_camera_pos);
+    Vector3fC dir = p - detach<false>(m_camera_pos);
     FloatC dist2 = squared_norm(dir);
     dir /= safe_sqrt(dist2);
 
-    FloatC cosTheta = dot(detach(m_camera_dir), dir);
-    result.sensor_val = rcp(dist2)*pow(rcp(cosTheta), 3.f)*detach(m_inv_area);
+    FloatC cosTheta = dot(detach<false>(m_camera_dir), dir);
+    result.sensor_val = rcp(dist2)*pow(rcp(cosTheta), 3.f)*detach<false>(m_inv_area);
     return result;
 }
 
@@ -205,11 +205,11 @@ PrimaryEdgeSample PerspectiveCamera::sample_primary_edge(const FloatC &_sample1)
 
     IntC edge_idx;
     std::tie(edge_idx, result.pdf) = m_edge_distrb.sample_reuse<false>(sample1);
-    result.pdf /= detach(gather<FloatD>(m_edge_info.edge_length, IntD(edge_idx)));
-    Vector2fC edge_normal = detach(gather<Vector2fD>(m_edge_info.edge_normal, IntD(edge_idx)));
+    result.pdf /= detach<false>(gather<FloatD>(m_edge_info.edge_length, IntD(edge_idx)));
+    Vector2fC edge_normal = detach<false>(gather<Vector2fD>(m_edge_info.edge_normal, IntD(edge_idx)));
     Vector2fD p0 = gather<Vector2fD>(m_edge_info.p0, IntD(edge_idx)), p1 = gather<Vector2fD>(m_edge_info.p1, IntD(edge_idx));
     Vector2fD p_    = fmadd(p0, 1.0f - sample1, p1*sample1);
-    Vector2fC p     = detach(p_);
+    Vector2fC p     = detach<false>(p_);
     result.x_dot_n  = dot(p_, edge_normal);
 
     Vector2iC ip    = floor2int<Vector2iC, Vector2fC>(p*m_resolution);

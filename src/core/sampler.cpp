@@ -17,14 +17,17 @@ uint64_array_t<UInt32> sample_tea_64(UInt32 v0, UInt32 v1, int rounds = 4) {
 }
 
 void Sampler::seed(UInt64C seed_value) {
+    seed_indices(seed_value, arange<UInt64C>(seed_value.size()));
+}
+
+void Sampler::seed_indices(UInt64C seed_value, const UInt64C &idx) {
     if ( !m_rng )
         m_rng = std::make_unique<PCG32>();
 
     seed_value += m_base_seed;
 
-    UInt64C idx = arange<UInt64C>(seed_value.size());
-
-    m_rng->seed(1, sample_tea_64(seed_value, idx), sample_tea_64(idx, seed_value));
+    // drjit v1.x: seed(initstate, initseq) - removed first size parameter
+    m_rng->seed(sample_tea_64(seed_value, idx), sample_tea_64(idx, seed_value));
 
     m_sample_count = static_cast<int64_t>(seed_value.size());
 }

@@ -55,7 +55,7 @@ typename Bitmap<channels>::template Value<ad> Bitmap<channels>::eval(Vector2f<ad
         if constexpr ( ad )
             return m_data;
         else
-            return detach(m_data);
+            return detach<false>(m_data);
     } else {
         if ( width < 2 || height < 2 )
             throw Exception("Bitmap: invalid resolution!");
@@ -72,16 +72,16 @@ typename Bitmap<channels>::template Value<ad> Bitmap<channels>::eval(Vector2f<ad
             uv.y() += -.5f+(m_scale)/2;
             uv += (m_trans);
         } else {
-            uv = Vector2fC((uv.x()-0.5f)*cos(detach(m_rot)) + (uv.y()-0.5f)*sin(detach(m_rot)), -(uv.x()-0.5f)*sin(detach(m_rot)) + (uv.y()-0.5f)*cos(detach(m_rot)));
+            uv = Vector2fC((uv.x()-0.5f)*cos(detach<false>(m_rot)) + (uv.y()-0.5f)*sin(detach<false>(m_rot)), -(uv.x()-0.5f)*sin(detach<false>(m_rot)) + (uv.y()-0.5f)*cos(detach<false>(m_rot)));
             uv += .5f;
             if ( flip_v ) {
                 // flip the v coordinates to match common practices
                 uv.y() = -uv.y();
             }
-            uv *= detach(m_scale);
-            uv.x() -= -.5f+detach(m_scale)/2;
-            uv.y() += -.5f+detach(m_scale)/2;
-            uv += detach(m_trans);
+            uv *= detach<false>(m_scale);
+            uv.x() -= -.5f+detach<false>(m_scale)/2;
+            uv.y() += -.5f+detach<false>(m_scale)/2;
+            uv += detach<false>(m_trans);
         }
 
         if (envmap_mode) {
@@ -116,7 +116,7 @@ typename Bitmap<channels>::template Value<ad> Bitmap<channels>::eval(Vector2f<ad
             v01 = gather<ValueD>(m_data, yw + pos.x() + width);
             v11 = gather<ValueD>(m_data, yw + xp1 + width);
         } else {
-            const ValueC &data = detach(m_data);
+            const ValueC &data = detach<false>(m_data);
             v00 = gather<ValueC>(data, yw + pos.x());
             v10 = gather<ValueC>(data, yw + xp1);
             v01 = gather<ValueC>(data, yw + pos.x() + width);

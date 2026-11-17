@@ -6,7 +6,7 @@ NAMESPACE_BEGIN(psdr_jit)
 
 PSDR_CLASS_DECL_BEGIN(FieldExtractionIntegrator, final, Integrator)
 public:
-    FieldExtractionIntegrator(char *field);
+    FieldExtractionIntegrator(const char *field);
 
     std::string m_field;
     std::string m_object;

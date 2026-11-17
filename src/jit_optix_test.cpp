@@ -57,7 +57,8 @@ using UInt64 = dr::CUDAArray<uint64_t>;
 using Mask = dr::CUDAArray<bool>;
 
 void demo() {
-    
+    // Push CUDA context for OptiX operations
+    jit_cuda_push_context(jit_cuda_context());
 
     // =====================================================
     // Copy vertex data to device
@@ -96,7 +97,7 @@ void demo() {
 
 
         
-        void *d_vertices = jit_malloc(AllocType::Device, sizeof(h_vertices));
+        void *d_vertices = jit_malloc(JitBackend::CUDA, sizeof(h_vertices));
         jit_memcpy(JitBackend::CUDA, d_vertices, h_vertices, sizeof(h_vertices));
 
         // =====================================================
@@ -113,7 +114,7 @@ void demo() {
         build_inputs[0].triangleArray.numIndexTriplets      = m_face_count;
         build_inputs[0].triangleArray.indexBuffer           = (CUdeviceptr) m_faces.data();
 
-        void *d_vertices1 = jit_malloc(AllocType::Device, sizeof(h_vertices1));
+        void *d_vertices1 = jit_malloc(JitBackend::CUDA, sizeof(h_vertices1));
         jit_memcpy(JitBackend::CUDA, d_vertices1, h_vertices1, sizeof(h_vertices1));
 
         build_inputs[1].type                        = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
@@ -140,12 +141,12 @@ void demo() {
         context, &accel_options, build_inputs.data(), num_meshes, &gas_buffer_sizes));
 
     void *d_gas_temp =
-        jit_malloc(AllocType::Device, gas_buffer_sizes.tempSizeInBytes);
+        jit_malloc(JitBackend::CUDA, gas_buffer_sizes.tempSizeInBytes);
 
     void *d_gas =
-        jit_malloc(AllocType::Device, gas_buffer_sizes.outputSizeInBytes);
+        jit_malloc(JitBackend::CUDA, gas_buffer_sizes.outputSizeInBytes);
 
-    size_t *d_compacted_size = (size_t *) jit_malloc(AllocType::Device, sizeof(size_t)),
+    size_t *d_compacted_size = (size_t *) jit_malloc(JitBackend::CUDA, sizeof(size_t)),
             h_compacted_size = 0;
     OptixAccelEmitDesc build_property = {};
     build_property.type = OPTIX_PROPERTY_TYPE_COMPACTED_SIZE;
@@ -168,7 +169,7 @@ void demo() {
     jit_memcpy(JitBackend::CUDA, &h_compacted_size, d_compacted_size, sizeof(size_t));
 
     if (h_compacted_size < gas_buffer_sizes.outputSizeInBytes) {
-        void *d_gas_compact = jit_malloc(AllocType::Device, h_compacted_size);
+        void *d_gas_compact = jit_malloc(JitBackend::CUDA, h_compacted_size);
         jit_optix_check(optixAccelCompact(context, jit_cuda_stream(),
                                            gas_handle, d_gas_compact,
                                            h_compacted_size, &gas_handle));
@@ -207,7 +208,7 @@ void demo() {
     size_t log_size = sizeof(log);
 
     OptixModule mod;
-    int rv = optixModuleCreateFromPTX(
+    int rv = optixModuleCreate(
         context, &module_compile_options, &pipeline_compile_options,
         miss_and_closesthit_ptx, strlen(miss_and_closesthit_ptx), log,
         &log_size, &mod);
@@ -241,7 +242,7 @@ void demo() {
     OptixShaderBindingTable sbt {};
 
     sbt.missRecordBase =
-        jit_malloc(AllocType::HostPinned, OPTIX_SBT_RECORD_HEADER_SIZE);
+        jit_malloc(JitBackend::None, OPTIX_SBT_RECORD_HEADER_SIZE);
     sbt.missRecordStrideInBytes     = OPTIX_SBT_RECORD_HEADER_SIZE;
     sbt.missRecordCount             = 1;
 
@@ -263,7 +264,7 @@ void demo() {
     
 
     sbt.hitgroupRecordBase =
-        jit_malloc(AllocType::HostPinned, num_meshes * sizeof(HitGroupSbtRecord));
+        jit_malloc(JitBackend::None, num_meshes * sizeof(HitGroupSbtRecord));
     sbt.hitgroupRecordStrideInBytes = sizeof(HitGroupSbtRecord);
     sbt.hitgroupRecordCount         = num_meshes;
 
@@ -273,9 +274,9 @@ void demo() {
                          num_meshes * sizeof(HitGroupSbtRecord));
 
     sbt.missRecordBase =
-        jit_malloc_migrate(sbt.missRecordBase, AllocType::Device, 1);
+        jit_malloc_migrate(sbt.missRecordBase, JitBackend::CUDA, 1);
     sbt.hitgroupRecordBase =
-        jit_malloc_migrate(sbt.hitgroupRecordBase, AllocType::Device, 1);
+        jit_malloc_migrate(sbt.hitgroupRecordBase, JitBackend::CUDA, 1);
 
     // =====================================================
     // Let Dr.Jit know about all of this
@@ -334,13 +335,16 @@ void demo() {
         };
 
         jit_optix_ray_trace(sizeof(trace_args) / sizeof(uint32_t), trace_args,
+                            0, nullptr, nullptr,  // no hit objects
+                            0, 0, 0,              // no reordering
+                            1,                    // invoke
                             mask.index(), pipeline_handle.index(), sbt_handle.index());
 
         payload_0 = UInt32::steal(trace_args[15]);
         jit_var_eval(payload_0.index());
 
         UInt32 payload_0_host =
-            UInt32::steal(jit_var_migrate(payload_0.index(), AllocType::Host));
+            UInt32::steal(jit_var_migrate(payload_0.index(), JitBackend::None));
         jit_sync_thread();
 
         for (int k = 0; k < res; ++k) {
@@ -355,7 +359,7 @@ void demo() {
         jit_var_eval(payload_1.index());
 
         UInt32 payload_1_host =
-            UInt32::steal(jit_var_migrate(payload_1.index(), AllocType::Host));
+            UInt32::steal(jit_var_migrate(payload_1.index(), JitBackend::None));
         jit_sync_thread();
 
         for (int k = 0; k < res; ++k) {
@@ -408,13 +412,16 @@ void demo() {
         };
 
         jit_optix_ray_trace(sizeof(trace_args) / sizeof(uint32_t), trace_args,
+                            0, nullptr, nullptr,  // no hit objects
+                            0, 0, 0,              // no reordering
+                            1,                    // invoke
                             mask.index(), pipeline_handle.index(), sbt_handle.index());
 
         payload_0 = UInt32::steal(trace_args[15]);
         jit_var_eval(payload_0.index());
 
         UInt32 payload_0_host =
-            UInt32::steal(jit_var_migrate(payload_0.index(), AllocType::Host));
+            UInt32::steal(jit_var_migrate(payload_0.index(), JitBackend::None));
         jit_sync_thread();
 
         for (int k = 0; k < res; ++k) {
@@ -429,7 +436,7 @@ void demo() {
         jit_var_eval(payload_1.index());
 
         UInt32 payload_1_host =
-            UInt32::steal(jit_var_migrate(payload_1.index(), AllocType::Host));
+            UInt32::steal(jit_var_migrate(payload_1.index(), JitBackend::None));
         jit_sync_thread();
 
         for (int k = 0; k < res; ++k) {
@@ -447,6 +454,9 @@ void demo() {
     // =====================================================
 
     jit_free(d_gas);
+
+    // Pop CUDA context
+    jit_cuda_pop_context();
 }
 
 
@@ -458,6 +468,6 @@ void jit_test::trace_ray() {
     demo();
 
     // Shut down Dr.Jit (will destroy OptiX device context)
-    jit_shutdown();
+    // The Python Dr.Jit module owns the runtime; do not shut it down here.
 
 }

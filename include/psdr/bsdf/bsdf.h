@@ -21,7 +21,7 @@ struct BSDFSample_ : public SampleRecord_<Float_> {
 
 PSDR_CLASS_DECL_BEGIN(BSDF,, Object)
 public:
-    BSDF() {}
+    BSDF() : Object("BSDF") {}
     virtual ~BSDF() override {}
     virtual SpectrumC eval(const IntersectionC &its, const Vector3fC &wo, MaskC active = true) const = 0;
     virtual SpectrumD eval(const IntersectionD &its, const Vector3fD &wo, MaskD active = true) const = 0;
@@ -57,21 +57,21 @@ public:
 
     bool m_twoSide = false;
 
-    DRJIT_VCALL_REGISTER(FloatD, BSDF);
+    static constexpr const char *Domain = "BSDF";
                     
 PSDR_CLASS_DECL_END(BSDF)
 
 NAMESPACE_END(psdr_jit)
 
-DRJIT_VCALL_BEGIN(psdr_jit::BSDF)
-    DRJIT_VCALL_METHOD(eval)
-    DRJIT_VCALL_METHOD(evalC)
-    DRJIT_VCALL_METHOD(evalD)
-    DRJIT_VCALL_METHOD(sample)
-    DRJIT_VCALL_METHOD(sampleC)
-    DRJIT_VCALL_METHOD(sampleD)
-    DRJIT_VCALL_METHOD(pdf)
-    DRJIT_VCALL_METHOD(pdfC)
-    DRJIT_VCALL_METHOD(pdfD)
-    DRJIT_VCALL_METHOD(anisotropic)
-DRJIT_VCALL_END(psdr_jit::BSDF)
+DRJIT_CALL_BEGIN(psdr_jit::BSDF)
+    DRJIT_CALL_METHOD(eval)
+    DRJIT_CALL_METHOD(evalC)
+    DRJIT_CALL_METHOD(evalD)
+    DRJIT_CALL_METHOD(sample)
+    DRJIT_CALL_METHOD(sampleC)
+    DRJIT_CALL_METHOD(sampleD)
+    DRJIT_CALL_METHOD(pdf)
+    DRJIT_CALL_METHOD(pdfC)
+    DRJIT_CALL_METHOD(pdfD)
+    DRJIT_CALL_GETTER(anisotropic)
+DRJIT_CALL_END()

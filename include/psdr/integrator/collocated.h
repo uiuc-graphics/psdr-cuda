@@ -6,6 +6,7 @@ NAMESPACE_BEGIN(psdr_jit)
 
 PSDR_CLASS_DECL_BEGIN(CollocatedIntegrator, final, Integrator)
 public:
+    CollocatedIntegrator(float intensity) : m_intensity(FloatD(intensity)) {}
     CollocatedIntegrator(const FloatD &intensity) : m_intensity(intensity) {}
 
     FloatD m_intensity;
