@@ -3,6 +3,7 @@
 #include <drjit-core/jit.h>
 
 #include <psdr/core/ray.h>
+#include <psdr/core/transform.h>
 #include <psdr/core/intersection.h>
 #include <psdr/core/sampler.h>
 #include <psdr/core/pmf.h>
@@ -28,7 +29,7 @@
 NAMESPACE_BEGIN(psdr_jit)
 
 template <typename T>
-void build_param_map(Scene::ParamMap &param_map, const std::vector<T*> arr, const char *name) {
+void build_param_map(Scene::ParamMap &param_map, const std::vector<T*> &arr, const char *name) {
     for ( size_t i = 0; i < arr.size(); ++i ) {
         const T *obj = arr[i];
 
@@ -48,7 +49,6 @@ void build_param_map(Scene::ParamMap &param_map, const std::vector<T*> arr, cons
 }
 
 Scene::Scene() {
-    m_has_bound_mesh = false;
     m_loaded = true;
     m_samplers = new Sampler[3];
     m_optix = new Scene_OptiX();
@@ -310,6 +310,10 @@ void Scene::add_Mesh(Mesh *mesh_, const char *bsdf_id, Emitter *emitter) {
 }
 
 void Scene::configure(std::vector<int> active_sensor) {
+    for (int sensor_id : active_sensor) {
+        PSDR_ASSERT_MSG(sensor_id >= 0 && static_cast<size_t>(sensor_id) < m_sensors.size(),
+                        "Active sensor index out of range");
+    }
     
     // Build the parameter map
 
@@ -356,6 +360,11 @@ void Scene::configure(std::vector<int> active_sensor) {
     m_lower = full<Vector3fC>(std::numeric_limits<float>::max());
     m_upper = full<Vector3fC>(std::numeric_limits<float>::lowest());
     for ( Mesh *mesh : m_meshes ) {
+        if (mesh == m_bound_mesh) {
+            face_offset.push_back(face_offset.back() + mesh->m_num_faces);
+            edge_offset.push_back(edge_offset.back());
+            continue;
+        }
         mesh->configure();
         face_offset.push_back(face_offset.back() + mesh->m_num_faces);
         if ( m_opts.sppse > 0 && mesh->m_enable_edges ) {
@@ -379,43 +388,31 @@ void Scene::configure(std::vector<int> active_sensor) {
     std::vector<size_t> num_edges;
     if ( m_opts.sppe > 0 ) num_edges.reserve(m_sensors.size());
 
-    if (active_sensor.size() > 0) {
-        for (int sensor_id=0; sensor_id<m_num_sensors; ++sensor_id) {
-            m_sensors[sensor_id]->m_edge_info = empty<PrimaryEdgeInfo>(0);
-            m_sensors[sensor_id]->m_edge_distrb.init(FloatC(1));
-            for ( int i = 0; i < 3; ++i ) {
-                if ( PerspectiveCamera *camera = dynamic_cast<PerspectiveCamera *>(m_sensors[sensor_id]) ) {
-                    m_lower[i] = minimum(m_lower[i], detach<false>(camera->m_camera_pos[i]));
-                    m_upper[i] = maximum(m_upper[i], detach<false>(camera->m_camera_pos[i]));
-                }
-            }
-        }
-        for (int sensor_id : active_sensor) {
-            m_sensors[sensor_id]->m_resolution = ScalarVector2i(m_opts.width, m_opts.height);
-            m_sensors[sensor_id]->m_scene = this;
-            m_sensors[sensor_id]->configure(true);
-            if ( m_opts.sppe > 0 ) num_edges.push_back(m_sensors[sensor_id]->m_edge_distrb.m_size);
-        }
-    } else {
-        // std::cout << "Inital Config! Remember to call sc.configure(active_sensor=[...], dirty=True/False) again!" << std::endl;
-        for ( Sensor *sensor : m_sensors ) {
+    for (int id = 0; id < m_num_sensors; ++id) {
+        Sensor *sensor = m_sensors[id];
+        const bool active = active_sensor.empty() ||
+            std::find(active_sensor.begin(), active_sensor.end(), id) != active_sensor.end();
+        sensor->m_enable_edges = false;
+        if (active) {
             sensor->m_resolution = ScalarVector2i(m_opts.width, m_opts.height);
             sensor->m_scene = this;
             sensor->configure(true);
-            sensor->m_edge_info = empty<PrimaryEdgeInfo>(0);
-            sensor->m_edge_distrb.init(FloatC(1));
-
-            if ( m_opts.sppe > 0 ) num_edges.push_back(sensor->m_edge_distrb.m_size);
-
-            for ( int i = 0; i < 3; ++i ) {
-                if ( PerspectiveCamera *camera = dynamic_cast<PerspectiveCamera *>(sensor) ) {
-                    m_lower[i] = minimum(m_lower[i], detach<false>(camera->m_camera_pos[i]));
-                    m_upper[i] = maximum(m_upper[i], detach<false>(camera->m_camera_pos[i]));
-                }
-            }
+            if (m_opts.sppe > 0)
+                num_edges.push_back(sensor->m_enable_edges ? sensor->m_edge_distrb.m_size : 0);
+        }
+        if (!sensor->m_enable_edges) {
+            sensor->m_edge_info = {};
+            sensor->m_edge_distrb = {};
+        }
+        if (auto *camera = dynamic_cast<PerspectiveCamera *>(sensor)) {
+            // An inactive camera may never have been configured.
+            Vector3fC position = active ? detach<false>(camera->m_camera_pos) :
+                detach<false>(transform_pos(camera->m_to_world_left * camera->m_to_world_raw *
+                                            camera->m_to_world_right, zeros<Vector3fD>()));
+            m_lower = minimum(m_lower, position);
+            m_upper = maximum(m_upper, position);
         }
     }
-    
 
     if ( m_opts.log_level > 0 ) {
         std::stringstream oss;
@@ -434,55 +431,39 @@ void Scene::configure(std::vector<int> active_sensor) {
 
 
     // Handling env. lighting
-    if ( m_emitter_env != nullptr && (!m_has_bound_mesh) ) {
+    if ( m_emitter_env != nullptr ) {
         FloatC margin = min((m_upper - m_lower)*0.05f);
         m_lower -= margin; m_upper += margin;
 
         m_emitter_env->m_lower = m_lower;
         m_emitter_env->m_upper = m_upper;
 
-        // Adding a bounding mesh
-        std::array<std::vector<float>, 3> lower_, upper_;
-        copy_cuda_array<float, 3>(m_lower, lower_);
-        copy_cuda_array<float, 3>(m_upper, upper_);
-
-        float vtx_data[3][8];
-        for ( int i = 0; i < 8; ++i )
-            for ( int j = 0; j < 3; ++j )
-                vtx_data[j][i] = (i & (1 << j)) ? upper_[j][0] : lower_[j][0];
-
-        const int face_data[3][12] = {
-            0, 0, 1, 1, 2, 2, 0, 0, 0, 0, 4, 4,
-            1, 3, 5, 7, 3, 7, 5, 4, 2, 6, 7, 6,
-            3, 2, 7, 3, 7, 6, 1, 5, 6, 4, 5, 7
-        };
-
-        Mesh *bound_mesh = new Mesh();
-        bound_mesh->m_num_vertices = 8;
-        bound_mesh->m_num_faces = 12;
-        bound_mesh->m_use_face_normals = true;
-        bound_mesh->m_enable_edges = false;
-        bound_mesh->m_bsdf = nullptr;
-        bound_mesh->m_emitter = m_emitter_env;
-        for ( int i = 0; i < 3; ++i ) {
-            bound_mesh->m_vertex_positions_raw[i] = load<FloatD>(vtx_data[i], 8);
-            bound_mesh->m_face_indices[i] = load<IntD>(face_data[i], 12);
-        }
-        bound_mesh->configure();
-
-        if (m_has_bound_mesh) {
-            delete m_meshes[m_meshes.size()-1];
-            m_meshes[m_meshes.size()-1] = bound_mesh;
-        } else {
-            m_meshes.push_back(bound_mesh);
+        if (!m_bound_mesh) {
+            const int faces[3][12] = {
+                {0, 0, 1, 1, 2, 2, 0, 0, 0, 0, 4, 4},
+                {1, 3, 5, 7, 3, 7, 5, 4, 2, 6, 7, 6},
+                {3, 2, 7, 3, 7, 6, 1, 5, 6, 4, 5, 7}
+            };
+            m_bound_mesh = new Mesh();
+            m_bound_mesh->m_num_vertices = 8;
+            m_bound_mesh->m_num_faces = 12;
+            m_bound_mesh->m_use_face_normals = true;
+            m_bound_mesh->m_enable_edges = false;
+            m_bound_mesh->m_emitter = m_emitter_env;
+            for (int i = 0; i < 3; ++i)
+                m_bound_mesh->m_face_indices[i] = load<IntD>(faces[i], 12);
+            m_meshes.push_back(m_bound_mesh);
             face_offset.push_back(face_offset.back() + 12);
             edge_offset.push_back(edge_offset.back());
             ++m_num_meshes;
-            m_has_bound_mesh = true;
         }
-        
+        const IntC corners = arange<IntC>(8);
+        for (int axis = 0; axis < 3; ++axis)
+            m_bound_mesh->m_vertex_positions_raw[axis] = select(
+                neq(corners & (1 << axis), 0), m_upper[axis], m_lower[axis]);
+        m_bound_mesh->configure();
         if ( m_opts.log_level > 0 ) {
-            log("Bounding mesh added for environmental lighting.");
+            log("Updated environment bounds.");
         }
     }
 

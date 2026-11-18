@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include "integrator.h"
 
 NAMESPACE_BEGIN(psdr_jit)
@@ -27,7 +28,7 @@ protected:
 
     int m_mis;
 
-    std::vector<HyperCubeDistribution3f*> m_warpper;
+    std::vector<std::shared_ptr<const HyperCubeDistribution3f>> m_guides;
 
 PSDR_CLASS_DECL_END(PathTracer)
 

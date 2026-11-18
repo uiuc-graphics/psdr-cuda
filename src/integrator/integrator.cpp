@@ -9,35 +9,37 @@
 
 NAMESPACE_BEGIN(psdr_jit)
 
+// An all-minus-one array selects the full image; explicit batches contain pixel indices.
+static bool is_pixel_batch(const IntC &pixels, const RenderOption &opts) {
+    if (all(pixels == -1))
+        return false;
+    const int64_t count = static_cast<int64_t>(opts.width) * opts.height;
+    PSDR_ASSERT_MSG(count > 0 && count <= std::numeric_limits<int>::max(), "Invalid film size!");
+    PSDR_ASSERT_MSG(all(pixels >= 0 && pixels < static_cast<int>(count)), "Batch pixel out of range!");
+    return true;
+}
+
 SpectrumC Integrator::renderC(const Scene &scene, int sensor_id, int seed, IntC pix_id) const {
     using namespace std::chrono;
     auto start_time = high_resolution_clock::now();
 
     const RenderOption &opts = scene.m_opts;
-    int64_t sample_count = static_cast<int64_t>(opts.height)*opts.width*opts.spp;
 
-    if (any(pix_id != -1) && seed == -1) {
+    const bool batch = is_pixel_batch(detach<false>(pix_id), scene.m_opts);
+    if (batch && seed == -1) {
         PSDR_ASSERT_MSG(false, "While using batch rendering, seed must be set!");
     }
 
-    if (seed != -1) {
-        auto seeds = arange<UInt64C>(sample_count) + seed;
-        if (all(pix_id == -1)) {
-            scene.m_samplers[0].seed(seeds);
-        } else {
-            UInt64C indices = repeat(UInt64C(pix_id), opts.spp) * opts.spp
-                + arange<UInt64C>(pix_id.size() * opts.spp) % opts.spp;
-            scene.m_samplers[0].seed_indices(indices + seed, indices);
-        }
+    if (!batch && opts.spp > 0 && seed != -1) {
+        const int64_t count = static_cast<int64_t>(opts.height) * opts.width * opts.spp;
+        scene.m_samplers[0].seed(arange<UInt64C>(count) + seed);
     }
 
-
-    const int num_pixels = opts.width*opts.height;
     SpectrumC result;
-    if (all(pix_id == -1)) {
+    if (!batch) {
         result = __render<false>(scene, sensor_id);
     } else {
-        result = __render_batch<false>(scene, sensor_id, pix_id);
+        result = __render_batch<false>(scene, sensor_id, pix_id, seed);
     }
     auto end_time = high_resolution_clock::now();
     if ( opts.log_level ) {
@@ -53,7 +55,8 @@ SpectrumC Integrator::renderC(const Scene &scene, int sensor_id, int seed, IntC 
 
 
 SpectrumD Integrator::renderD(const Scene &scene, int sensor_id, int seed, IntD pix_id) const {
-    if (any(pix_id != -1) && seed == -1) {
+    const bool batch = is_pixel_batch(detach<false>(pix_id), scene.m_opts);
+    if (batch && seed == -1) {
         PSDR_ASSERT_MSG(false, "While using batch rendering, seed must be set!");
     }
     using namespace std::chrono;
@@ -61,16 +64,8 @@ SpectrumD Integrator::renderD(const Scene &scene, int sensor_id, int seed, IntD 
     const RenderOption &opts = scene.m_opts;
 
     int64_t num_pixels = static_cast<int64_t>(opts.height)*opts.width;
-    if (opts.spp > 0 && seed != -1) {
-        auto seeds = arange<UInt64C>(num_pixels * opts.spp) + seed;
-        if (all(pix_id == -1)) {
-            scene.m_samplers[0].seed(seeds);
-        } else {
-            UInt64C indices = repeat(UInt64C(detach<false>(pix_id)), opts.spp) * opts.spp
-                + arange<UInt64C>(pix_id.size() * opts.spp) % opts.spp;
-            scene.m_samplers[0].seed_indices(indices + seed, indices);
-        }
-    }
+    if (!batch && opts.spp > 0 && seed != -1)
+        scene.m_samplers[0].seed(arange<UInt64C>(num_pixels * opts.spp) + seed);
     if (opts.sppe > 0 && seed != -1) {
         scene.m_samplers[1].seed(arange<UInt64C>(num_pixels * opts.sppe) + seed);
     }
@@ -80,27 +75,27 @@ SpectrumD Integrator::renderD(const Scene &scene, int sensor_id, int seed, IntD 
 
     // Interior integral
     SpectrumD result;
-    if (all(pix_id == -1)) {
+    if (!batch) {
         result = __render<true>(scene, sensor_id);
     } else {
-        result = __render_batch<true>(scene, sensor_id, pix_id);
+        result = __render_batch<true>(scene, sensor_id, pix_id, seed);
     }
 
     // Edge samplers use full-image pixel indices, including during a batch.
     // Accumulate into a full-sized buffer before gathering requested pixels.
-    const bool batch = any(pix_id != -1);
-    SpectrumD edges = zeros<SpectrumD>(num_pixels);
-    SpectrumD &edge_target = batch ? edges : result;
-    if ( likely(scene.m_opts.sppe > 0) ) {
-        render_primary_edges(scene, sensor_id, edge_target);
+    if (opts.sppe > 0 || opts.sppse > 0) {
+        SpectrumD edges;
+        if (batch)
+            edges = zeros<SpectrumD>(num_pixels);
+        SpectrumD &target = batch ? edges : result;
+        if (opts.sppe > 0)
+            render_primary_edges(scene, sensor_id, target);
+        if (opts.sppse > 0)
+            render_secondary_edges(scene, sensor_id, target);
+        if (batch)
+            result += gather<SpectrumD>(edges, pix_id);
     }
 
-    if ( likely(scene.m_opts.sppse > 0) ) {
-        render_secondary_edges(scene, sensor_id, edge_target);
-    }
-    if (batch)
-        result += gather<SpectrumD>(edges, pix_id);
-    
     auto end_time = high_resolution_clock::now();
     if ( scene.m_opts.log_level ) {
         std::stringstream oss;
@@ -151,7 +146,7 @@ Spectrum<ad> Integrator::__render(const Scene &scene, int sensor_id) const {
 
 
 template <bool ad>
-Spectrum<ad> Integrator::__render_batch(const Scene &scene, int sensor_id, Int<ad> pix_id) const {
+Spectrum<ad> Integrator::__render_batch(const Scene &scene, int sensor_id, Int<ad> pix_id, int seed) const {
     // std::cout << "using batch renderer" << std::endl;
     PSDR_ASSERT_MSG(scene.is_ready(), "Input scene must be configured!");
     PSDR_ASSERT_MSG(sensor_id >= 0 && sensor_id < scene.m_num_sensors, "Invalid sensor id!");
@@ -164,19 +159,26 @@ Spectrum<ad> Integrator::__render_batch(const Scene &scene, int sensor_id, Int<a
         int64_t num_samples = static_cast<int64_t>(num_pixels)*opts.spp;
         PSDR_ASSERT(num_samples <= std::numeric_limits<int>::max());
 
+        // A batch has fewer RNG lanes than the scene's full-image sampler.
+        Sampler sampler;
+        sampler.m_base_seed = scene.m_samplers[0].m_base_seed;
+        UInt64C indices = repeat(UInt64C(detach<false>(pix_id)), opts.spp) * opts.spp
+            + arange<UInt64C>(num_samples) % opts.spp;
+        sampler.seed_indices(indices + seed, indices);
+
         Int<ad> repeat_idx = arange<Int<ad>>(num_samples) / opts.spp;
         Vector2f<ad> sampled_pixels(pix_id % opts.width, pix_id / opts.width);
 
         Vector2f<ad> samples_base = gather<Vector2f<ad>>(sampled_pixels, repeat_idx);
         // std::cout << samples_base << std::endl;
-        // std::cout << scene.m_samplers[0].next_2d<ad>() << std::endl;
-        Vector2f<ad> samples = (samples_base + scene.m_samplers[0].next_2d<ad>())
+        // std::cout << sampler.next_2d<ad>() << std::endl;
+        Vector2f<ad> samples = (samples_base + sampler.next_2d<ad>())
                                 /ScalarVector2f(opts.width, opts.height);
 
         Ray<ad> camera_ray = scene.m_sensors[sensor_id]->sample_primary_ray(samples);
 
 
-        Spectrum<ad> value = Li(scene, scene.m_samplers[0], camera_ray);
+        Spectrum<ad> value = Li(scene, sampler, camera_ray);
         masked(value, ~drjit::isfinite<Spectrum<ad>>(value) || drjit::isnan<Spectrum<ad>>(value)) = 0.f;
         for (int j=0; j<3; ++j) {
             scatter_reduce(ReduceOp::Add, result[j], value[j], repeat_idx);

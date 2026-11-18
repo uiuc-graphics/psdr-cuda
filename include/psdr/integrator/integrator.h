@@ -25,7 +25,7 @@ protected:
     Spectrum<ad> __render(const Scene &scene, int sensor_id) const;
 
     template <bool ad>
-    Spectrum<ad> __render_batch(const Scene &scene, int sensor_id, Int<ad> batch_pix) const;
+    Spectrum<ad> __render_batch(const Scene &scene, int sensor_id, Int<ad> batch_pix, int seed) const;
 
 PSDR_CLASS_DECL_END(SamplingIntegrator)
 

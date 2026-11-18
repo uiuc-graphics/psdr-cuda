@@ -15,6 +15,9 @@
 // #include <drjit-core/array.h>
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <mutex>
+#include <map>
 #include <psdr/jit_optix_test.h>
 #include <iostream>
 
@@ -73,25 +76,93 @@ const char *miss_and_closesthit_ptx = R"(
 
 namespace dr = drjit;
 
+// Dr.Jit 1.5 caches linked kernels by code and compile options. Scene-specific
+// program groups with identical options cannot safely share those kernels.
+struct ScenePipeline {
+    UInt32 handle;
+    OptixProgramGroup groups[2]{};
+};
+
+static std::shared_ptr<ScenePipeline> scene_pipeline(OptixDeviceContext context) {
+    static std::mutex mutex;
+    static std::map<OptixDeviceContext, std::weak_ptr<ScenePipeline>> pipelines;
+    std::lock_guard<std::mutex> lock(mutex);
+    auto &entry = pipelines[context];
+    if (auto existing = entry.lock())
+        return existing;
+
+    // A previous group may still be referenced by a cached compiled kernel.
+    jit_flush_kernel_cache();
+    auto pipeline = std::make_shared<ScenePipeline>();
+    OptixModule module{};
+    OptixModuleCompileOptions module_options{};
+    OptixPipelineCompileOptions pipeline_options{};
+    OptixProgramGroupDesc descriptors[2]{};
+    OptixProgramGroupOptions group_options{};
+    // Configure options for OptiX pipeline
+
+    module_options.debugLevel    = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+    module_options.optLevel      = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
+
+    pipeline_options.usesMotionBlur = false;
+    pipeline_options.traversableGraphFlags =
+        OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
+    pipeline_options.numPayloadValues = 4;
+    pipeline_options.numAttributeValues = 0;
+    // Match Dr.Jit's debug exception flags. OptiX's DEBUG traversal/
+    // callable instrumentation crashes nvrtum64.dll (driver 610.88) when
+    // compiling multi-material kernels with dr.JitFlag.Debug enabled.
+    // Keep stack/depth checks; Dr.Jit's own debug checks stay enabled.
+    pipeline_options.exceptionFlags =
+        OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
+        OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW;
+    pipeline_options.pipelineLaunchParamsVariableName = "params";
+    pipeline_options.usesPrimitiveTypeFlags =
+        (unsigned) OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE;
+
+    // Create Optix module from supplemental PTX code
+
+    char log[1024];
+    size_t log_size = sizeof(log);
+
+    int rv = optixModuleCreate(
+        context, &module_options, &pipeline_options,
+        miss_and_closesthit_ptx, strlen(miss_and_closesthit_ptx), log,
+        &log_size, &module);
+    if (rv) {
+        fputs(log, stderr);
+        jit_optix_check(rv);
+    }
+
+    // Create program groups (raygen provided by Dr.Jit..)
+
+    descriptors[0].kind                         = OPTIX_PROGRAM_GROUP_KIND_MISS;
+    descriptors[0].miss.module                  = module;
+    descriptors[0].miss.entryFunctionName       = "__miss__ms";
+    descriptors[1].kind                         = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+    descriptors[1].hitgroup.moduleCH            = module;
+    descriptors[1].hitgroup.entryFunctionNameCH = "__closesthit__ch";
+
+    log_size = sizeof(log);
+    jit_optix_check(optixProgramGroupCreate(context, descriptors, 2 /* two at once */,
+                                            &group_options, log, &log_size, pipeline->groups));
+    pipeline->handle = UInt32::steal(jit_optix_configure_pipeline(
+        &pipeline_options, module, pipeline->groups, 2));
+    entry = pipeline;
+    return pipeline;
+}
+
 // Per scene OptiX state data structure
 struct PathTracerState {
-    OptixModule mod;
+    std::shared_ptr<ScenePipeline> pipeline;
     OptixDeviceContext             context                  = 0;
     OptixTraversableHandle         gas_handle               = 0;  // Traversable handle for triangle AS
-    uint32_t pipeline_jit_index;
-    uint32_t sbt_jit_index ;
     UInt64 handle;
     void* d_gas = nullptr;
-    UInt32 pipeline_handle;
     UInt32 sbt_handle;
-    OptixPipelineCompileOptions    pipeline_compile_options = {};
     std::vector<HitGroupSbtRecord> hg_sbts;
     OptixShaderBindingTable sbt {};
-    OptixModuleCompileOptions module_compile_options { };
     OptixAccelEmitDesc build_property = {};
-    OptixProgramGroupOptions pgo { };
-    OptixProgramGroupDesc pgd[2] { };
-    OptixProgramGroup pg[2];
     OptixAccelBuildOptions accel_options {};
     OptixAccelBufferSizes gas_buffer_sizes;
     void *d_gas_temp = nullptr;
@@ -161,68 +232,8 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
         m_accel->context = jit_optix_context();
         
 
-        // =====================================================
-        // Configure options for OptiX pipeline
-        // =====================================================
+        m_accel->pipeline = scene_pipeline(m_accel->context);
 
-        m_accel->module_compile_options.debugLevel    = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
-        m_accel->module_compile_options.optLevel      = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
-
-        m_accel->pipeline_compile_options.usesMotionBlur = false;
-        m_accel->pipeline_compile_options.traversableGraphFlags =
-            OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS; // <-- Use this when possible
-        m_accel->pipeline_compile_options.numPayloadValues = 4;
-        m_accel->pipeline_compile_options.numAttributeValues = 0;
-        // Match Dr.Jit's debug exception flags. OptiX's DEBUG traversal/
-        // callable instrumentation crashes nvrtum64.dll (driver 610.88) when
-        // compiling multi-material kernels with dr.JitFlag.Debug enabled.
-        // Keep stack/depth checks; Dr.Jit's own debug checks stay enabled.
-        m_accel->pipeline_compile_options.exceptionFlags =
-            OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
-            OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW;
-        m_accel->pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
-        m_accel->pipeline_compile_options.usesPrimitiveTypeFlags =
-            (unsigned) OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE; // <-- Use this when possible
-
-        // =====================================================
-        // Create Optix module from supplemental PTX code
-        // =====================================================
-
-        char log[1024];
-        size_t log_size = sizeof(log);
-
-        
-        int rv = optixModuleCreate(
-            m_accel->context, &m_accel->module_compile_options, &m_accel->pipeline_compile_options,
-            miss_and_closesthit_ptx, strlen(miss_and_closesthit_ptx), log,
-            &log_size, &m_accel->mod);
-        if (rv) {
-            fputs(log, stderr);
-            jit_optix_check(rv);
-        }
-
-
-
-        // =====================================================
-        // Create program groups (raygen provided by Dr.Jit..)
-        // =====================================================
-
-
-
-        m_accel->pgd[0].kind                         = OPTIX_PROGRAM_GROUP_KIND_MISS;
-        m_accel->pgd[0].miss.module                  = m_accel->mod;
-        m_accel->pgd[0].miss.entryFunctionName       = "__miss__ms";
-        m_accel->pgd[1].kind                         = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-        m_accel->pgd[1].hitgroup.moduleCH            = m_accel->mod;
-        m_accel->pgd[1].hitgroup.entryFunctionNameCH = "__closesthit__ch";
-
-        log_size = sizeof(log);
-        jit_optix_check(optixProgramGroupCreate(m_accel->context, m_accel->pgd, 2 /* two at once */,
-                                                &m_accel->pgo, log, &log_size, m_accel->pg));
-
-        // =====================================================
-        // Shader binding table setup
-        // =====================================================
         m_accel->sbt.missRecordBase =
             jit_malloc(JitBackend::None, OPTIX_SBT_RECORD_HEADER_SIZE);
         m_accel->sbt.missRecordStrideInBytes     = OPTIX_SBT_RECORD_HEADER_SIZE;
@@ -233,14 +244,14 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
             m_accel->hg_sbts.push_back(HitGroupSbtRecord());
             m_accel->hg_sbts.back().data.shape_offset = face_offset[i];
             m_accel->hg_sbts.back().data.shape_id = i;
-            jit_optix_check(optixSbtRecordPackHeader(m_accel->pg[1], &m_accel->hg_sbts.back()));
+            jit_optix_check(optixSbtRecordPackHeader(m_accel->pipeline->groups[1], &m_accel->hg_sbts.back()));
 
         }
         m_accel->sbt.hitgroupRecordBase =
             jit_malloc(JitBackend::None, num_meshes * sizeof(HitGroupSbtRecord));
         m_accel->sbt.hitgroupRecordStrideInBytes = sizeof(HitGroupSbtRecord);
         m_accel->sbt.hitgroupRecordCount         = num_meshes;
-        jit_optix_check(optixSbtRecordPackHeader(m_accel->pg[0], m_accel->sbt.missRecordBase));
+        jit_optix_check(optixSbtRecordPackHeader(m_accel->pipeline->groups[0], m_accel->sbt.missRecordBase));
         std::memcpy(m_accel->sbt.hitgroupRecordBase, m_accel->hg_sbts.data(),
                              num_meshes * sizeof(HitGroupSbtRecord));
                              
@@ -255,15 +266,9 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
         // Let Dr.Jit know about all of this
         // =====================================================
 
-        m_accel->pipeline_handle = UInt32::steal(jit_optix_configure_pipeline(
-            &m_accel->pipeline_compile_options, // <-- these pointers must stay
-            m_accel->mod,
-            m_accel->pg, 2
-        ));
-
         m_accel->sbt_handle = UInt32::steal(jit_optix_configure_sbt(
             &m_accel->sbt, //     alive while Dr.Jit runs
-            m_accel->pipeline_handle.index()
+            m_accel->pipeline->handle.index()
         ));
 
 
@@ -297,8 +302,8 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
         build_inputs[i].triangleArray.vertexFormat  = OPTIX_VERTEX_FORMAT_FLOAT3;
         build_inputs[i].triangleArray.numVertices   = static_cast<uint32_t>(mesh->m_num_vertices);
 
-        vertex_buffer_ptrs[i] = jit_malloc(JitBackend::CUDA, sizeof(float)*(mesh->m_num_vertices*3));
-        jit_memcpy(JitBackend::CUDA, vertex_buffer_ptrs[i], mesh->m_vertex_buffer.data(), sizeof(float)*(mesh->m_num_vertices*3));
+        // The mesh owns the evaluated FLOAT3 buffer throughout the build.
+        vertex_buffer_ptrs[i] = (CUdeviceptr) mesh->m_vertex_buffer.data();
 
         build_inputs[i].triangleArray.vertexBuffers = &vertex_buffer_ptrs[i];
         build_inputs[i].triangleArray.flags         = triangle_input_flags;
@@ -341,9 +346,6 @@ void Scene_OptiX::configure(const std::vector<Mesh *> &meshes) {
 
 
     jit_free(m_accel->d_gas_temp);
-
-    for ( size_t i = 0; i < num_meshes; ++i )
-        jit_free(vertex_buffer_ptrs[i]);
 
     jit_memcpy(JitBackend::CUDA, &m_accel->h_compacted_size, d_compacted_size, sizeof(size_t));
 
@@ -425,7 +427,7 @@ Intersection_OptiX Scene_OptiX::ray_intersect(const Ray<ad> &ray, Mask<ad> &acti
                         0, nullptr, nullptr,  // no hit objects
                         0, 0, 0,              // no reordering
                         1,                    // invoke
-                        active.index(), m_accel->pipeline_handle.index(), m_accel->sbt_handle.index());
+                        active.index(), m_accel->pipeline->handle.index(), m_accel->sbt_handle.index());
     using Single = drjit::float32_array_t<FloatC>;
     m_its.shape_id = UInt32::steal(trace_args[15]); // slow
     m_its.triangle_id = UInt32::steal(trace_args[16]);

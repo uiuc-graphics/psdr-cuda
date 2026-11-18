@@ -45,6 +45,14 @@ def test_defaults():
     assert (empty.num_sensors, empty.num_meshes) == (0, 0)
 
 
+def test_configure_rejects_invalid_sensor():
+    sc = scene()
+    for index in (-1, sc.num_sensors):
+        with pytest.raises(RuntimeError, match="Active sensor index out of range"):
+            sc.configure([index])
+    sc.configure([0])
+
+
 def test_typed_bindings_and_parameter_lifetime():
     sc = scene()
     mesh = sc.param_map["Mesh[0]"]
@@ -146,10 +154,13 @@ def test_batch_matches_full_render():
     integrator = psdr.CollocatedIntegrator(1.)
     indices = Int([0, 5, 27, 95])
     full = integrator.renderC(sc, seed=23).numpy()
+    next_full = integrator.renderC(sc).numpy()
+    integrator.renderC(sc, seed=23)
     batch = integrator.renderC(sc, seed=23, batch_pix=indices).numpy()
     np.testing.assert_allclose(batch, full[:, [0, 5, 27, 95]], rtol=2e-5)
     batch_ad = integrator.renderD(sc, seed=23, batch_pix=dr.cuda.ad.Int(indices)).numpy()
     np.testing.assert_allclose(batch_ad, batch, rtol=2e-5)
+    np.testing.assert_allclose(integrator.renderC(sc).numpy(), next_full, rtol=2e-5)
 
 
 def test_reconfigure_after_adding_mesh_and_material():
@@ -192,7 +203,17 @@ def test_environment_map_and_multiple_scene_lifetimes():
     assert psdr.CollocatedIntegrator(1.).renderC(second).numpy().mean() > 0
 
 
-def test_batch_edge_gradients_match_full_render():
+def test_interleaved_live_optix_scenes():
+    first = scene()
+    renderer = psdr.CollocatedIntegrator(1.)
+    reference = renderer.renderC(first, seed=17).numpy().copy()
+    second = scene(psdr.DiffuseBSDF([.25] * 3))
+    for sc, expected in ((second, reference * .5), (first, reference), (second, reference * .5)):
+        np.testing.assert_allclose(renderer.renderC(sc, seed=17).numpy(), expected, rtol=2e-5)
+
+
+@pytest.mark.parametrize("active_sensors", [[], [0]])
+def test_batch_edge_gradients_match_full_render(active_sensors):
     sc = scene()
     sc.opts.sppe = 8
     vertices = sc.param_map["Mesh[0]"].vertex_positions
@@ -204,7 +225,7 @@ def test_batch_edge_gradients_match_full_render():
     transform = dr.identity(Matrix4f)
     transform[0, 3] = position
     sc.param_map["Mesh[0]"].set_transform(transform)
-    sc.configure([0])
+    sc.configure(active_sensors)
     renderer = psdr.CollocatedIntegrator(1.)
     full = renderer.renderD(sc, seed=13)
     indices = dr.cuda.ad.Int([0, 5, 27, 95])
@@ -252,3 +273,40 @@ def test_optix_debug_matches_normal_rendering(tmp_path):
         for name in normal.files:
             np.testing.assert_allclose(debug[name], normal[name], rtol=1e-3, atol=2e-5,
                                        err_msg=name)
+
+@pytest.mark.parametrize("integrator", [psdr.PathTracer, psdr.Direct])
+def test_invalid_guiding_settings(integrator):
+    sc = scene()
+    renderer = integrator(2)
+    for index in (-1, 1):
+        with pytest.raises(RuntimeError, match="Invalid sensor"):
+            renderer.preprocess_secondary_edges(sc, index, [2, 2, 2, 1])
+    for resolution in ([2, 2, 2, 0], [-1, 2, 2, 1], [65536, 65536, 2, 1]):
+        with pytest.raises(RuntimeError, match="Invalid guiding resolution"):
+            renderer.preprocess_secondary_edges(sc, 0, resolution)
+
+@pytest.mark.parametrize("method,pixel_type", [("renderC", dr.cuda.Int), ("renderD", dr.cuda.ad.Int)])
+def test_batch_pixel_range(method, pixel_type):
+    sc = scene()
+    renderer = psdr.CollocatedIntegrator(1.)
+    for pixels in ([-1, 0], [sc.opts.width * sc.opts.height]):
+        with pytest.raises(RuntimeError, match="Batch pixel out of range"):
+            getattr(renderer, method)(sc, seed=13, batch_pix=pixel_type(pixels))
+
+def test_environment_bounds_follow_geometry():
+    sc = scene()
+    env = psdr.EnvironmentMap()
+    env.radiance = psdr.Bitmap3fD(2, 2, dr.cuda.ad.Array3f([[1.] * 4] * 3))
+    sc.add_EnvironmentMap(env)
+    sc.configure()
+    mesh = sc.param_map["Mesh[0]"]
+    transform = dr.identity(Matrix4f)
+    transform[0, 3] = 20.
+    mesh.set_transform(transform)
+    sc.add_Mesh(quad(-1, 1, 8), "mat", None)
+    sc.configure([0])
+    hit = sc.unit_ray_intersect(
+        psdr.RayC(Array3f(0), dr.normalize(Array3f(20, 0, 3))), dr.cuda.Bool(True)
+    )
+    assert list(hit.shape)[0] is mesh
+    assert sc.num_meshes == 3

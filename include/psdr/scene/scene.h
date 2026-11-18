@@ -79,7 +79,7 @@ public:
     TriangleInfoD           m_triangle_info;
     TriangleUVD             m_triangle_uv;
     MaskD                   m_triangle_face_normals;
-    bool                    m_has_bound_mesh;
+    Mesh                   *m_bound_mesh = nullptr; // Owned by m_meshes.
 
 
     SecondaryEdgeInfo       m_sec_edge_info;

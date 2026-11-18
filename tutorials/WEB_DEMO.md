@@ -28,8 +28,8 @@ Geometry derivatives include primary and secondary boundary samples, each at
 the selected sample count. Low sample counts produce noisy estimates.
 
 Rendering runs in one spawned GPU process, with one active job at a time.
-Linked kernels are cleared between jobs to prevent reuse of an old OptiX
-pipeline with a new scene's shader table; the on-disk compilation cache remains.
+Scenes in the same OptiX context share program groups while they are alive.
+The C++ renderer clears linked kernels when it creates a new set of groups.
 The server binds only to loopback, uses no remote services or CDN, and accepts
 only bundled scenes and bounded settings. This is a local demo, not a public
 multi-user render service. Stop it with Ctrl+C; an active GPU job finishes before

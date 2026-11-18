@@ -2,7 +2,6 @@
 
 import base64
 import io
-import math
 import time
 from pathlib import Path
 
@@ -30,7 +29,7 @@ def validate(data):
             if isinstance(value, bool) or value not in ENUMS[key]:
                 raise ValueError(f"Invalid {key}")
         elif (isinstance(value, bool) or not isinstance(value, (float, int))
-              or not math.isfinite(value) or not BOUNDS[key][0] <= value <= BOUNDS[key][1]):
+              or not BOUNDS[key][0] <= value <= BOUNDS[key][1]):
             raise ValueError(f"Invalid {key}")
     for key in ("resolution", "spp", "seed"):
         if not isinstance(settings[key], int):
@@ -60,11 +59,6 @@ def render_arrays(settings, assets):
     if not dr.has_backend(dr.JitBackend.CUDA):
         raise RuntimeError("Rendering requires an NVIDIA GPU and a CUDA/OptiX driver.")
     dr.set_flag(dr.JitFlag.Debug, False)
-    # Each job creates new OptiX program groups. Dr.Jit's in-memory kernel cache
-    # can otherwise reuse a linked pipeline from the previous scene with the new
-    # SBT, causing UNKNOWN_ENTRY_FUNCTION. The single worker has no other GPU
-    # jobs in flight; discard linked kernels here, retaining the disk cache.
-    dr.flush_kernel_cache()
     p = {key: Float(settings[key]) for key in ("x", "y", "roughness", "albedo", "light")}
     dr.enable_grad(p[settings["derivative"]])
     sc = psdr.Scene()

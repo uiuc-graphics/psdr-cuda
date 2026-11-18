@@ -23,7 +23,7 @@ GPU = pytest.mark.skipif(not dr.has_backend(dr.JitBackend.CUDA), reason="CUDA re
 
 
 @pytest.mark.parametrize("settings", [None, [], {"scene":"missing"}, {"spp":4096},
-    {"x":float("nan")}, {"light":float("inf")}, {"seed":True}, {"seed":1.5},
+    {"x":float("nan")}, {"light":float("inf")}, {"seed":True}, {"seed":1.5}, {"seed":10**400},
     {"resolution":128.0}, {"roughness":0}, {"exposure":4}, {"file":"/tmp/scene"}])
 def test_reject_invalid_settings(settings):
     with pytest.raises(ValueError):

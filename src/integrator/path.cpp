@@ -133,20 +133,21 @@ void PathTracer::preprocess_secondary_edges(const Scene &scene, int sensor_id, c
     PSDR_ASSERT(nrounds > 0);
     PSDR_ASSERT_MSG(scene.is_ready(), "Scene needs to be configured!");
 
-    if ( static_cast<int>(m_warpper.size()) != scene.m_num_sensors )
-        m_warpper.resize(scene.m_num_sensors, nullptr);
+    PSDR_ASSERT_MSG(sensor_id >= 0 && sensor_id < scene.m_num_sensors, "Invalid sensor id!");
+    int num_samples = 1;
+    for (int i = 0; i < 4; ++i) {
+        PSDR_ASSERT_MSG(reso[i] > 0 && num_samples <= std::numeric_limits<int>::max() / reso[i],
+                        "Invalid guiding resolution!");
+        num_samples *= reso[i];
+    }
 
-    if ( m_warpper[sensor_id] == nullptr )
-        m_warpper[sensor_id] = new HyperCubeDistribution3f();
-    auto warpper = m_warpper[sensor_id];
-
-    warpper->set_resolution(head<3>(reso));
-    int num_cells = warpper->m_num_cells;
-    const int64_t num_samples = static_cast<int64_t>(num_cells)*reso[3];
-    PSDR_ASSERT(num_samples <= std::numeric_limits<int>::max());
+    // Publish only a fully initialized guide, including when preprocessing is retried.
+    auto guide = std::make_shared<HyperCubeDistribution3f>();
+    guide->set_resolution(head<3>(reso));
+    const int num_cells = guide->m_num_cells;
 
     IntC idx = divisor<int>(reso[3])(arange<IntC>(num_samples));
-    Vector3iC sample_base = gather<Vector3iC>(warpper->m_cells, idx);
+    Vector3iC sample_base = gather<Vector3iC>(guide->m_cells, idx);
 
     Sampler sampler;
     sampler.seed(arange<UInt64C>(num_samples) + seed);
@@ -155,7 +156,7 @@ void PathTracer::preprocess_secondary_edges(const Scene &scene, int sensor_id, c
     for ( int j = 0; j < nrounds; ++j ) {
         SpectrumC value0;
         std::tie(std::ignore, value0) = eval_secondary_edge<false>(scene, *scene.m_sensors[sensor_id],
-                                                                   (sample_base + sampler.next_nd<3, false>())*warpper->m_unit);
+                                                                   (sample_base + sampler.next_nd<3, false>())*guide->m_unit);
         masked(value0, ~drjit::isfinite<SpectrumC>(value0)) = 0.f;
         if ( likely(reso[3] > 1) ) {
             value0 /= static_cast<float>(reso[3]);
@@ -164,7 +165,9 @@ void PathTracer::preprocess_secondary_edges(const Scene &scene, int sensor_id, c
         scatter_reduce(ReduceOp::Add, result, drjit::max(value0), idx);
     }
     if ( nrounds > 1 ) result /= static_cast<float>(nrounds);
-    warpper->set_mass(result);
+    guide->set_mass(result);
+    m_guides.resize(scene.m_num_sensors);
+    m_guides[sensor_id] = std::move(guide);
 
     // cuda_eval(); cuda_sync();
 }
@@ -279,8 +282,8 @@ void PathTracer::render_secondary_edges(const Scene &scene, int sensor_id, Spect
     if (scene.m_opts.log_level > 0) {
         std::cout << "render_secondary_edges" << std::endl;
     }
-    FloatC pdf0 = (m_warpper.empty() || m_warpper[sensor_id] == nullptr) ?
-                  1.f : m_warpper[sensor_id]->sample_reuse(sample3);
+    FloatC pdf0 = (static_cast<size_t>(sensor_id) >= m_guides.size() || !m_guides[sensor_id]) ?
+                  1.f : m_guides[sensor_id]->sample_reuse(sample3);
 
     auto [idx, value] = eval_secondary_edge<true>(scene, *scene.m_sensors[sensor_id], sample3);
     // masked(value, ~drjit::isfinite<SpectrumD>(value)) = 0.f;

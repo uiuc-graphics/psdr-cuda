@@ -60,7 +60,7 @@ FloatC HyperCubeDistribution<ndim>::pdf(const Vectorf<ndim, false> &p) const {
 		valid &= (ip[i] >= 0 && ip[i] < m_resolution[i]);
 		idx = fmadd(idx, m_resolution[i], ip[i]);
 	}
-	return (gather<FloatC>(m_distrb.pmf(), idx)*static_cast<float>(m_num_cells)) & valid;
+	return (gather<FloatC>(m_distrb.pmf(), idx, valid)*static_cast<float>(m_num_cells)) & valid;
 }
 
 void CubeDistribution::set_resolution(const Array<int, 2> &reso) {
@@ -157,7 +157,7 @@ FloatC CubeDistribution::pdf(const Vectorf<2, false> &p) const {
 		valid &= (ip[i] >= 0 && ip[i] < m_resolution[i]);
 		idx = fmadd(idx, m_resolution[i], ip[i]);
 	}
-	return (gather<FloatC>(m_distrb.pmf(), idx)*static_cast<float>(m_num_cells)) & valid;
+	return (gather<FloatC>(m_distrb.pmf(), idx, valid)*static_cast<float>(m_num_cells)) & valid;
 }
 
 
